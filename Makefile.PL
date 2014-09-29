@@ -7,7 +7,7 @@ WriteMakefile(
                       'Exporter' => '5.57', },
   ABSTRACT_FROM  => 'lib/Solaris/kstat.pm',
   AUTHOR         => 'Gordon Marler',
-  LIBS           => [''],
+  LIBS           => ['-lkstat'],
   DEFINE         => '',
   INC            => '-I.',
   OBJECT         => '$(O_FILES)',
