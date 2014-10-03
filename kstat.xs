@@ -487,3 +487,40 @@ CODE:
   RETVAL = hv_exists_ent((HV *)self, key, 0);
 OUTPUT:
   RETVAL
+
+#
+# Hash iterator initialisation.  Read the kstats if necessary.
+#
+
+SV*
+FIRSTKEY(self)
+  SV* self;
+PREINIT:
+  HE *he;
+PPCODE:
+  self = SvRV(self);
+  read_kstats((HV *)self, FALSE);
+  hv_iterinit((HV *)self);
+  if ((he = hv_iternext((HV *)self))) {
+    EXTEND(SP, 1);
+    PUSHs(hv_iterkeysv(he));
+  }
+
+#
+# Return hash iterator next value.  Read the kstats if necessary.
+#
+
+SV*
+NEXTKEY(self, lastkey)
+  SV* self;
+  SV* lastkey;
+PREINIT:
+  HE *he;
+PPCODE:
+  self = SvRV(self);
+  if ((he = hv_iternext((HV *)self))) {
+    EXTEND(SP, 1);
+    PUSHs(hv_iterkeysv(he));
+  }
+
+
