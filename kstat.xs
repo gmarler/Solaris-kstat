@@ -152,6 +152,53 @@ get_tie(SV *self, char *module, int instance, char *name, int *is_new)
   return (tie);
 }
 
+/*
+ * Named kstats are returned as a list of key/values.  This function converts
+ * such a list into the equivalent perl datatypes, and stores them in the passed
+ * hash.
+ */
+
+static void
+save_named(HV *self, kstat_t *kp, int strip_str)
+{
+  kstat_named_t *knp;
+  int            n;
+  SV*            value;
+
+  for (n = kp->ks_ndata, knp = KSTAT_NAMED_PTR(kp); n > 0; n--, knp++) {
+    switch (knp->data_type) {
+    case KSTAT_DATA_CHAR:
+      value = newSVpv(knp->value.c, strip_str ?
+          strlen(knp->value.c) : sizeof (knp->value.c));
+      break;
+    case KSTAT_DATA_INT32:
+      value = newSViv(knp->value.i32);
+      break;
+    case KSTAT_DATA_UINT32:
+      value = NEW_UV(knp->value.ui32);
+      break;
+    case KSTAT_DATA_INT64:
+      value = NEW_UV(knp->value.i64);
+      break;
+    case KSTAT_DATA_UINT64:
+      value = NEW_UV(knp->value.ui64);
+      break;
+    case KSTAT_DATA_STRING:
+      if (KSTAT_NAMED_STR_PTR(knp) == NULL)
+        value = newSVpv("null", sizeof ("null") - 1);
+      else
+        value = newSVpv(KSTAT_NAMED_STR_PTR(knp),
+            KSTAT_NAMED_STR_BUFLEN(knp) -1);
+      break;
+    default:
+      PERL_ASSERTMSG(0, "kstat_read: invalid data type");
+      continue;
+    }
+    hv_store(self, knp->name, strlen(knp->name), value, 0);
+  }
+}
+
+
 
 
 MODULE = Solaris::kstat       PACKAGE = Solaris::kstat
@@ -263,6 +310,7 @@ CODE:
   SvREADONLY_on(SvRV(RETVAL));
 OUTPUT:
   RETVAL
+
 
 #
 # Destructor.  Closes the kstat connection
