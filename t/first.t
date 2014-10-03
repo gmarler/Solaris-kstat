@@ -20,7 +20,8 @@ cmp_ok( scalar(@cpus), '>=', 1, "There is at least one CPU" );
 my $first_cpu = $cpus[0];
 
 ok( exists $k->{cpu}{$first_cpu}, "CPU kstats for CPU ${first_cpu} exist" );
-ok( exists $k->{cpu}{$first_cpu}{sys}, 'CPU kstats for CPU ${first_cpu} sys exist' );
+ok( exists $k->{cpu}{$first_cpu}{sys},
+    "CPU kstats for CPU ${first_cpu} sys exist" );
 ok( exists $k->{cpu}{$first_cpu}{sys}{cpu_ticks_idle},
     "There are idle CPU ticks for CPU $first_cpu" );
 
