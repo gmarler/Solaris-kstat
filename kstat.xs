@@ -523,4 +523,43 @@ PPCODE:
     PUSHs(hv_iterkeysv(he));
   }
 
+#
+# Delete the specified hash entry.
+#
 
+SV*
+DELETE(self, key)
+  SV *self;
+  SV *key;
+CODE:
+  self = SvRV(self);
+  RETVAL = hv_delete_ent((HV *)self, key, 0, 0);
+  if (RETVAL) {
+    SvREFCNT_inc(RETVAL);
+  } else {
+    RETVAL = &PL_sv_undef;
+  }
+OUTPUT:
+  RETVAL
+
+#
+# Clear the entire hash.  This will stop any update() calls rereading this
+# kstat until it is accessed again.
+#
+
+void
+CLEAR(self)
+  SV* self;
+PREINIT:
+  MAGIC   *mg;
+  KstatInfo_t *kip;
+CODE:
+  self = SvRV(self);
+  hv_clear((HV *)self);
+  mg = mg_find(self, '~');
+  PERL_ASSERTMSG(mg != 0, "CLEAR: lost ~ magic");
+  kip = (KstatInfo_t *)SvPVX(mg->mg_obj);
+  kip->read  = FALSE;
+  kip->valid = TRUE;
+  hv_store((HV *)self, "class", 5, newSVpv(kip->kstat->ks_class, 0), 0);
+  hv_store((HV *)self, "crtime", 6, NEW_HRTIME(kip->kstat->ks_crtime), 0);
