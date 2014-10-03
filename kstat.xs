@@ -56,6 +56,9 @@ typedef struct {
   kstat_t     *kstat;     /* Handle used by kstat_read */
 } KstatInfo_t;
 
+/* typedef for raw kstat reader functions */
+typedef void (*kstat_raw_reader_t)(HV *, kstat_t *, int);
+
 /* C functions */
 
 /*
@@ -197,6 +200,78 @@ save_named(HV *self, kstat_t *kp, int strip_str)
     hv_store(self, knp->name, strlen(knp->name), value, 0);
   }
 }
+
+/*
+ * Read kstats and copy into the supplied perl hash structure.  If refresh is
+ * true, this function is being called as part of the update() method.  In this
+ * case it is only necessary to read the kstats if they have previously been
+ * accessed (kip->read == TRUE).  If refresh is false, this function is being
+ * called prior to returning a value to the caller. In this case, it is only
+ * necessary to read the kstats if they have not previously been read.  If the
+ * kstat_read() fails, 0 is returned, otherwise 1
+ */
+
+static int
+read_kstats(HV *self, int refresh)
+{
+  MAGIC              *mg;
+  KstatInfo_t        *kip;
+  kstat_raw_reader_t  fnp;
+
+  /* Find the MAGIC KstatInfo_t data structure */
+  mg = mg_find((SV *)self, '~');
+  PERL_ASSERTMSG(mg != 0, "read_kstats: lost ~ magic");
+  kip = (KstatInfo_t *)SvPVX(mg->mg_obj);
+
+  /* Return early if we don't need to actually read the kstats */
+  if ((refresh && ! kip->read) || (! refresh && kip->read)) {
+    return (1);
+  }
+
+  /* Read the kstats and return 0 if this fails */
+  if (kstat_read(kip->kstat_ctl, kip->kstat, NULL) < 0) {
+    return (0);
+  }
+
+  /* Save the read data */
+  hv_store(self, "snaptime", 8, NEW_HRTIME(kip->kstat->ks_snaptime), 0);
+  switch (kip->kstat->ks_type) {
+    case KSTAT_TYPE_RAW:
+    /*
+      if ((fnp = lookup_raw_kstat_fn(kip->kstat->ks_module,
+                                     kip->kstat->ks_name)) != 0) {
+        fnp(self, kip->kstat, kip->strip_str);
+      }
+      */
+      break;
+    case KSTAT_TYPE_NAMED:
+      save_named(self, kip->kstat, kip->strip_str);
+      break;
+    case KSTAT_TYPE_INTR:
+      /* save_intr(self, kip->kstat, kip->strip_str); */
+      break;
+    case KSTAT_TYPE_IO:
+      /* save_io(self, kip->kstat, kip->strip_str); */
+      break;
+    case KSTAT_TYPE_TIMER:
+      /* save_timer(self, kip->kstat, kip->strip_str); */
+      break;
+    default:
+      PERL_ASSERTMSG(0, "read_kstats: illegal kstat type");
+      break;
+  }
+  kip->read = TRUE;
+  return (1);
+}
+
+
+/*
+ * The XS code exported to perl is below here.  Note that the XS preprocessor
+ * has its own commenting syntax, so all comments from this point on are in
+ * that form.
+ */
+
+/* The following XS methods are the ABI of the Sun::Solaris::Kstat package */
 
 
 
@@ -355,11 +430,9 @@ PREINIT:
 CODE:
   self = SvRV(self);
   k = SvPV(key, klen);
-/*
- * if (strNE(k, "class") && strNE(k, "crtime")) {
+  if (strNE(k, "class") && strNE(k, "crtime")) {
     read_kstats((HV *)self, FALSE);
   }
-  */
   value = hv_fetch((HV *)self, k, klen, FALSE);
   if (value) {
     RETVAL = *value; SvREFCNT_inc(RETVAL);
@@ -387,7 +460,7 @@ CODE:
   self = SvRV(self);
   k = SvPV(key, klen);
   if (strNE(k, "class") && strNE(k, "crtime")) {
-    /* read_kstats((HV *)self, FALSE); */
+    read_kstats((HV *)self, FALSE);
   }
   SvREFCNT_inc(value);
   RETVAL = *(hv_store((HV *)self, k, klen, value, 0));
@@ -409,7 +482,7 @@ CODE:
   self = SvRV(self);
   k = SvPV(key, PL_na);
   if (strNE(k, "class") && strNE(k, "crtime")) {
-    /* read_kstats((HV *)self, FALSE); */
+    read_kstats((HV *)self, FALSE);
   }
   RETVAL = hv_exists_ent((HV *)self, key, 0);
 OUTPUT:
