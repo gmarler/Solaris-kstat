@@ -28,4 +28,5 @@ ok( exists $k->{cpu}{$first_cpu}{sys}{cpu_ticks_idle},
 like( $k->{cpu}{$first_cpu}{sys}{cpu_ticks_idle}, qr/^\d+$/,
       'IDLE CPU TICKS for first CPU has a numeric value' );
 
+diag Dumper($k->{cpu}{0}{sys});
 done_testing();
