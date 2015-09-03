@@ -4,11 +4,8 @@ use strict;
 use warnings;
 use XSLoader;
 
-use Exporter 5.57 'import';
-
-our $VERSION        = '0.001';
-our %EXPORT_TAGS    = ( 'all' => [] );
-our @EXPORT_OK      = ( @{ $EXPORT_TAGS{'all'} } );
+# VERSION
+# ABSTRACT: Solaris kstat consumer, implemented in Perl XS with 64-bits
 
 XSLoader::load('Solaris::kstat', $VERSION);
 
