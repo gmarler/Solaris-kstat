@@ -1,0 +1,2 @@
+* Make sure build/test/install fails if the invoking Perl doesn't have 64-bit
+  ints
