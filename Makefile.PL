@@ -8,7 +8,8 @@ WriteMakefile(
   ABSTRACT_FROM  => 'lib/Solaris/kstat.pm',
   AUTHOR         => 'Gordon Marler',
   LIBS           => ['-lkstat'],
-  DEFINE         => '-DKSTAT_DEBUG',
+  DEFINE         => '-DKSTAT_DEBUG -DUSE_64_BIT_INT',
   INC            => '-I.',
+  # CFLAGS         => '-xdumpmacros',
   OBJECT         => '$(O_FILES)',
 );
