@@ -47,20 +47,20 @@
 #define NEW_HRTIME(V) \
     newSVnv((NVTYPE) (V / 1000000000.0))
 
-#define	SAVE_FNP(H, F, K) \
+#define SAVE_FNP(H, F, K) \
     hv_store(H, K, sizeof (K) - 1, newSViv((IVTYPE)(uintptr_t)&F), 0)
-#define	SAVE_STRING(H, S, K, SS) \
+#define SAVE_STRING(H, S, K, SS) \
     hv_store(H, #K, sizeof (#K) - 1, \
     newSVpvn(S->K, SS ? strlen(S->K) : sizeof(S->K)), 0)
-#define	SAVE_INT32(H, S, K) \
+#define SAVE_INT32(H, S, K) \
     hv_store(H, #K, sizeof (#K) - 1, NEW_IV(S->K), 0)
-#define	SAVE_UINT32(H, S, K) \
+#define SAVE_UINT32(H, S, K) \
     hv_store(H, #K, sizeof (#K) - 1, NEW_UV(S->K), 0)
-#define	SAVE_INT64(H, S, K) \
+#define SAVE_INT64(H, S, K) \
     hv_store(H, #K, sizeof (#K) - 1, NEW_IV(S->K), 0)
-#define	SAVE_UINT64(H, S, K) \
+#define SAVE_UINT64(H, S, K) \
     hv_store(H, #K, sizeof (#K) - 1, NEW_UV(S->K), 0)
-#define	SAVE_HRTIME(H, S, K) \
+#define SAVE_HRTIME(H, S, K) \
     hv_store(H, #K, sizeof (#K) - 1, NEW_HRTIME(S->K), 0)
 
 
@@ -187,9 +187,9 @@ get_tie(SV *self, char *module, int instance, char *name, int *is_new)
   static int
 apply_to_ties(SV *self, ATTCb_t cb, void *arg)
 {
-  HV	*hash1;
-  HE	*entry1;
-  int	ret;
+  HV   *hash1;
+  HE   *entry1;
+  int   ret;
 
   hash1 = (HV *)SvRV(self);
   hv_iterinit(hash1);
@@ -258,11 +258,11 @@ set_valid(HV *self, void *arg)
   static int
 prune_invalid(SV *self, AV *del)
 {
-  HV	*hash1;
-  HE	*entry1;
-  STRLEN	klen;
-  char	*module, *instance, *name, *key;
-  int	ret;
+  HV      *hash1;
+  HE      *entry1;
+  STRLEN   klen;
+  char    *module, *instance, *name, *key;
+  int      ret;
 
   hash1 = (HV *)SvRV(self);
   hv_iterinit(hash1);
@@ -419,12 +419,10 @@ read_kstats(HV *self, int refresh)
   hv_store(self, "snaptime", 8, NEW_HRTIME(kip->kstat->ks_snaptime), 0);
   switch (kip->kstat->ks_type) {
     case KSTAT_TYPE_RAW:
-    /*
-      if ((fnp = lookup_raw_kstat_fn(kip->kstat->ks_module,
+ /*   if ((fnp = lookup_raw_kstat_fn(kip->kstat->ks_module,
                                      kip->kstat->ks_name)) != 0) {
         fnp(self, kip->kstat, kip->strip_str);
-      }
-      */
+      } */
       break;
     case KSTAT_TYPE_NAMED:
       save_named(self, kip->kstat, kip->strip_str);
@@ -446,7 +444,6 @@ read_kstats(HV *self, int refresh)
   return (1);
 }
 
-
 /*
  * The XS code exported to perl is below here.  Note that the XS preprocessor
  * has its own commenting syntax, so all comments from this point on are in
@@ -455,13 +452,9 @@ read_kstats(HV *self, int refresh)
 
 /* The following XS methods are the ABI of the Sun::Solaris::Kstat package */
 
-
-
-
 MODULE = Solaris::kstat       PACKAGE = Solaris::kstat
 PROTOTYPES: ENABLE
 
-# XS code
 # Create the raw kstat to store function lookup table on load
 #BOOT:
 #  build_raw_kstat_lookup();
@@ -539,8 +532,7 @@ CODE:
     }
 
     /* Don't bother storing raw stats we don't understand */
-    /*
-    if (kp->ks_type == KSTAT_TYPE_RAW &&
+ /* if (kp->ks_type == KSTAT_TYPE_RAW &&
         lookup_raw_kstat_fn(kp->ks_module, kp->ks_name) == 0) {
 #ifdef REPORT_UNKNOWN
       (void)fprintf(stderr,
@@ -549,12 +541,11 @@ CODE:
                     kp->ks_ndata, kp->ks_data_size);
 #endif
       continue;
-    }
-    */
+    }   */
 
     /* Create a 3-layer hash hierarchy - module.instance.name */
     tie = get_tie(RETVAL, kp->ks_module, kp->ks_instance,
-                  kp->ks_name, 0);
+                          kp->ks_name, 0);
 
     /* Save the data necessary to read the kstat info on demand */
     hv_store(tie, "class", 5, newSVpv(kp->ks_class, 0), 0);
@@ -567,6 +558,180 @@ CODE:
   SvREADONLY_on(SvRV(RETVAL));
 OUTPUT:
   RETVAL
+
+ #
+ # Update the perl hash structure so that it is in line with the kernel kstats
+ # data.  Only kstats athat have previously been accessed are read,
+ #
+
+ # Scalar context: true/false
+ # Array context: (\@added, \@deleted)
+  void
+update(self)
+  SV* self;
+PREINIT:
+  MAGIC       *mg;
+  kstat_ctl_t *kc;
+  kstat_t     *kp;
+  int          ret;
+  AV          *add, *del;
+PPCODE:
+  /* Find the hidden KstatInfo_t structure */
+  mg = mg_find(SvRV(self), '~');
+  PERL_ASSERTMSG(mg != 0, "update: lost ~ magic");
+  kc = *(kstat_ctl_t **)SvPVX(mg->mg_obj);
+  
+  /* Update the kstat chain, and return immediately on error. */
+  if ((ret = kstat_chain_update(kc)) == -1) {
+    if (GIMME_V == G_ARRAY) {
+      EXTEND(SP, 2);
+      PUSHs(sv_newmortal());
+      PUSHs(sv_newmortal());
+    } else {
+      EXTEND(SP, 1);
+      PUSHs(sv_2mortal(newSViv(ret)));
+    }
+  }
+  
+  /* Create the arrays to be returned if in an array context */
+  if (GIMME_V == G_ARRAY) {
+    add = newAV();
+    del = newAV();
+  } else {
+    add = 0;
+    del = 0;
+  }
+  
+  /*
+   * If the kstat chain hasn't changed we can just reread any stats
+   * that have already been read
+   */
+  if (ret == 0) {
+    if (! apply_to_ties(self, (ATTCb_t)read_kstats, (void *)TRUE)) {
+      if (GIMME_V == G_ARRAY) {
+        EXTEND(SP, 2);
+        PUSHs(sv_2mortal(newRV_noinc((SV *)add)));
+        PUSHs(sv_2mortal(newRV_noinc((SV *)del)));
+      } else {
+        EXTEND(SP, 1);
+        PUSHs(sv_2mortal(newSViv(-1)));
+      }
+    }
+  
+    /*
+     * Otherwise we have to update the Perl structure so that it is in
+     * agreement with the new kstat chain.  We do this in such a way as to
+     * retain all the existing structures, just adding or deleting the
+     * bare minimum.
+     */
+  } else {
+    KstatInfo_t kstatinfo;
+  
+    /*
+     * Step 1: set the 'invalid' flag on each entry
+     */
+    apply_to_ties(self, &set_valid, (void *)FALSE);
+  
+    /*
+     * Step 2: Set the 'valid' flag on all entries still in the
+     * kernel kstat chain
+     */
+    kstatinfo.read      = FALSE;
+    kstatinfo.valid     = TRUE;
+    kstatinfo.kstat_ctl = kc;
+    for (kp = kc->kc_chain; kp != 0; kp = kp->ks_next) {
+      int  new;
+      HV  *tie;
+  
+      /* Don't bother storing the kstat headers or types */
+      if (strncmp(kp->ks_name, "kstat_", 6) == 0) {
+        continue;
+      }
+  
+      /* Don't bother storing raw stats we don't understand */
+      if (kp->ks_type == KSTAT_TYPE_RAW &&
+          lookup_raw_kstat_fn(kp->ks_module, kp->ks_name)
+          == 0) {
+  #ifdef REPORT_UNKNOWN
+        (void) printf("Unknown kstat type %s:%d:%s "
+            "- %d of size %d\n", kp->ks_module,
+            kp->ks_instance, kp->ks_name,
+            kp->ks_ndata, kp->ks_data_size);
+  #endif
+        continue;
+      }
+  
+      /* Find the tied hash associated with the kstat entry */
+      tie = get_tie(self, kp->ks_module, kp->ks_instance,
+          kp->ks_name, &new);
+  
+      /* If newly created store the associated kstat info */
+      if (new) {
+        SV *kstatsv;
+  
+        /*
+         * Save the data necessary to read the kstat
+         * info on demand
+         */
+        hv_store(tie, "class", 5,
+            newSVpv(kp->ks_class, 0), 0);
+        hv_store(tie, "crtime", 6,
+            NEW_HRTIME(kp->ks_crtime), 0);
+        kstatinfo.kstat = kp;
+        kstatsv = newSVpv((char *)&kstatinfo,
+            sizeof (kstatinfo));
+        sv_magic((SV *)tie, kstatsv, '~', 0, 0);
+        SvREFCNT_dec(kstatsv);
+  
+        /* Save the key on the add list, if required */
+        if (GIMME_V == G_ARRAY) {
+          av_push(add, newSVpvf("%s:%d:%s",
+                kp->ks_module, kp->ks_instance,
+                kp->ks_name));
+        }
+  
+        /* If the stats already exist, just update them */
+      } else {
+        MAGIC *mg;
+        KstatInfo_t *kip;
+  
+        /* Find the hidden KstatInfo_t */
+        mg = mg_find((SV *)tie, '~');
+        PERL_ASSERTMSG(mg != 0, "update: lost ~ magic");
+        kip = (KstatInfo_t *)SvPVX(mg->mg_obj);
+  
+        /* Mark the tie as valid */
+        kip->valid = TRUE;
+  
+        /* Re-save the kstat_t pointer.  If the kstat
+         * has been deleted and re-added since the last
+         * update, the address of the kstat structure
+         * will have changed, even though the kstat will
+         * still live at the same place in the perl
+         * hash tree structure.
+         */
+        kip->kstat = kp;
+  
+        /* Reread the stats, if read previously */
+        read_kstats(tie, TRUE);
+      }
+    }
+  
+    /*
+     *Step 3: Delete any entries still marked as 'invalid'
+     */
+    ret = prune_invalid(self, del);
+  
+  }
+  if (GIMME_V == G_ARRAY) {
+    EXTEND(SP, 2);
+    PUSHs(sv_2mortal(newRV_noinc((SV *)add)));
+    PUSHs(sv_2mortal(newRV_noinc((SV *)del)));
+  } else {
+    EXTEND(SP, 1);
+    PUSHs(sv_2mortal(newSViv(ret)));
+  }
+
 
 
 #
