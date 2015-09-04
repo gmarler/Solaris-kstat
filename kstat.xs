@@ -69,20 +69,20 @@
     hv_store(H, #K, sizeof (#K) - 1, NEW_HRTIME(S->K), 0)
 
 
-#define	SAVE_FNP(H, F, K) \
+#define SAVE_FNP(H, F, K) \
     hv_store(H, K, sizeof (K) - 1, newSViv((IVTYPE)(uintptr_t)&F), 0)
-#define	SAVE_STRING(H, S, K, SS) \
+#define SAVE_STRING(H, S, K, SS) \
     hv_store(H, #K, sizeof (#K) - 1, \
     newSVpvn(S->K, SS ? strlen(S->K) : sizeof(S->K)), 0)
-#define	SAVE_INT32(H, S, K) \
+#define SAVE_INT32(H, S, K) \
     hv_store(H, #K, sizeof (#K) - 1, NEW_IV(S->K), 0)
-#define	SAVE_UINT32(H, S, K) \
+#define SAVE_UINT32(H, S, K) \
     hv_store(H, #K, sizeof (#K) - 1, NEW_UV(S->K), 0)
-#define	SAVE_INT64(H, S, K) \
+#define SAVE_INT64(H, S, K) \
     hv_store(H, #K, sizeof (#K) - 1, NEW_IV(S->K), 0)
-#define	SAVE_UINT64(H, S, K) \
+#define SAVE_UINT64(H, S, K) \
     hv_store(H, #K, sizeof (#K) - 1, NEW_UV(S->K), 0)
-#define	SAVE_HRTIME(H, S, K) \
+#define SAVE_HRTIME(H, S, K) \
     hv_store(H, #K, sizeof (#K) - 1, NEW_HRTIME(S->K), 0)
 
 
