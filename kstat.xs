@@ -45,7 +45,10 @@
 #endif
 
 #define NEW_HRTIME(V) \
-    newSVnv((NVTYPE) (V / 1000000000.0))
+   NEW_UV(V)
+/*     newSVnv((NVTYPE) (V / 1000000000.0))
+ * 
+ */
 
 #define SAVE_FNP(H, F, K) \
     hv_store(H, K, sizeof (K) - 1, newSViv((IVTYPE)(uintptr_t)&F), 0)
