@@ -47,6 +47,23 @@
 #define NEW_HRTIME(V) \
     newSVnv((NVTYPE) (V / 1000000000.0))
 
+#define	SAVE_FNP(H, F, K) \
+    hv_store(H, K, sizeof (K) - 1, newSViv((IVTYPE)(uintptr_t)&F), 0)
+#define	SAVE_STRING(H, S, K, SS) \
+    hv_store(H, #K, sizeof (#K) - 1, \
+    newSVpvn(S->K, SS ? strlen(S->K) : sizeof(S->K)), 0)
+#define	SAVE_INT32(H, S, K) \
+    hv_store(H, #K, sizeof (#K) - 1, NEW_IV(S->K), 0)
+#define	SAVE_UINT32(H, S, K) \
+    hv_store(H, #K, sizeof (#K) - 1, NEW_UV(S->K), 0)
+#define	SAVE_INT64(H, S, K) \
+    hv_store(H, #K, sizeof (#K) - 1, NEW_IV(S->K), 0)
+#define	SAVE_UINT64(H, S, K) \
+    hv_store(H, #K, sizeof (#K) - 1, NEW_UV(S->K), 0)
+#define	SAVE_HRTIME(H, S, K) \
+    hv_store(H, #K, sizeof (#K) - 1, NEW_HRTIME(S->K), 0)
+
+
 /* Private structure used for saving kstat info in the tied hashes */
 typedef struct {
   char         read;      /* Kstat block has been read before */
@@ -56,8 +73,14 @@ typedef struct {
   kstat_t     *kstat;     /* Handle used by kstat_read */
 } KstatInfo_t;
 
+/* typedef for apply_to_ties callback functions */
+typedef int (*ATTCb_t)(HV *, void *);
+
 /* typedef for raw kstat reader functions */
 typedef void (*kstat_raw_reader_t)(HV *, kstat_t *, int);
+
+/* Hash of "module:name" to KSTAT_RAW read functions */
+static HV *raw_kstat_lookup;
 
 /* C functions */
 
@@ -153,6 +176,165 @@ get_tie(SV *self, char *module, int instance, char *name, int *is_new)
     *is_new = new;
   }
   return (tie);
+}
+
+/*
+ * This is an iterator function used to traverse the hash hierarchy and apply
+ * the passed function to the tied hashes at the bottom of the hierarchy.  If
+ * any of the callback functions return 0, 0 is returned, otherwise 1
+ */
+
+  static int
+apply_to_ties(SV *self, ATTCb_t cb, void *arg)
+{
+  HV	*hash1;
+  HE	*entry1;
+  int	ret;
+
+  hash1 = (HV *)SvRV(self);
+  hv_iterinit(hash1);
+  ret = 1;
+
+  /* Iterate over each module */
+  while ((entry1 = hv_iternext(hash1))) {
+    HV *hash2;
+    HE *entry2;
+
+    hash2 = (HV *)SvRV(hv_iterval(hash1, entry1));
+    hv_iterinit(hash2);
+
+    /* Iterate over each module:instance */
+    while ((entry2 = hv_iternext(hash2))) {
+      HV *hash3;
+      HE *entry3;
+
+      hash3 = (HV *)SvRV(hv_iterval(hash2, entry2));
+      hv_iterinit(hash3);
+
+      /* Iterate over each module:instance:name */
+      while ((entry3 = hv_iternext(hash3))) {
+        HV    *hash4;
+        MAGIC *mg;
+
+        /* Get the tie */
+        hash4 = (HV *)SvRV(hv_iterval(hash3, entry3));
+        mg = mg_find((SV *)hash4, 'P');
+        PERL_ASSERTMSG(mg != 0,
+            "apply_to_ties: lost P magic");
+
+        /* Apply the callback */
+        if (! cb((HV *)SvRV(mg->mg_obj), arg)) {
+          ret = 0;
+        }
+      }
+    }
+  }
+  return (ret);
+}
+
+/*
+ * Mark this HV as valid - used by update() when pruning deleted kstat nodes
+ */
+
+  static int
+set_valid(HV *self, void *arg)
+{
+  MAGIC *mg;
+
+  mg = mg_find((SV *)self, '~');
+  PERL_ASSERTMSG(mg != 0, "set_valid: lost ~ magic");
+  ((KstatInfo_t *)SvPVX(mg->mg_obj))->valid = (int)(intptr_t)arg;
+  return (1);
+}
+
+/*
+ * Prune invalid kstat nodes. This is called when kstat_chain_update() detects
+ * that the kstat chain has been updated.  This removes any hash tree entries
+ * that no longer have a corresponding kstat.  If del is non-null it will be
+ * set to the keys of the deleted kstat nodes, if any.  If any entries are
+ * deleted 1 will be retured, otherwise 0
+ */
+
+  static int
+prune_invalid(SV *self, AV *del)
+{
+  HV	*hash1;
+  HE	*entry1;
+  STRLEN	klen;
+  char	*module, *instance, *name, *key;
+  int	ret;
+
+  hash1 = (HV *)SvRV(self);
+  hv_iterinit(hash1);
+  ret = 0;
+
+  /* Iterate over each module */
+  while ((entry1 = hv_iternext(hash1))) {
+    HV *hash2;
+    HE *entry2;
+
+    module = HePV(entry1, PL_na);
+    hash2 = (HV *)SvRV(hv_iterval(hash1, entry1));
+    hv_iterinit(hash2);
+
+    /* Iterate over each module:instance */
+    while ((entry2 = hv_iternext(hash2))) {
+      HV *hash3;
+      HE *entry3;
+
+      instance = HePV(entry2, PL_na);
+      hash3 = (HV *)SvRV(hv_iterval(hash2, entry2));
+      hv_iterinit(hash3);
+
+      /* Iterate over each module:instance:name */
+      while ((entry3 = hv_iternext(hash3))) {
+        HV    *hash4;
+        MAGIC *mg;
+        HV    *tie;
+
+        name = HePV(entry3, PL_na);
+        hash4 = (HV *)SvRV(hv_iterval(hash3, entry3));
+        mg = mg_find((SV *)hash4, 'P');
+        PERL_ASSERTMSG(mg != 0,
+            "prune_invalid: lost P magic");
+        tie = (HV *)SvRV(mg->mg_obj);
+        mg = mg_find((SV *)tie, '~');
+        PERL_ASSERTMSG(mg != 0,
+            "prune_invalid: lost ~ magic");
+
+        /* If this is marked as invalid, prune it */
+        if (((KstatInfo_t *)SvPVX(
+                (SV *)mg->mg_obj))->valid == FALSE) {
+          SvREADONLY_off(hash3);
+          key = HePV(entry3, klen);
+          hv_delete(hash3, key, klen, G_DISCARD);
+          SvREADONLY_on(hash3);
+          if (del) {
+            av_push(del,
+                newSVpvf("%s:%s:%s",
+                  module, instance, name));
+          }
+          ret = 1;
+        }
+      }
+
+      /* If the module:instance:name hash is empty prune it */
+      if (HvKEYS(hash3) == 0) {
+        SvREADONLY_off(hash2);
+        key = HePV(entry2, klen);
+        hv_delete(hash2, key, klen, G_DISCARD);
+        SvREADONLY_on(hash2);
+      }
+    }
+    /* If the module:instance hash is empty prune it */
+    if (HvKEYS(hash2) == 0) {
+      SvREADONLY_off(hash1);
+      key = HePV(entry1, klen);
+      hv_delete(hash1, key, klen, G_DISCARD);
+      SvREADONLY_on(hash1);
+    }
+  }
+  return (ret);
 }
 
 /*
