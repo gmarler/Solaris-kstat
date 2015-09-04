@@ -85,6 +85,42 @@ static HV *raw_kstat_lookup;
 /* C functions */
 
 /*
+ * This finds and returns the raw kstat reader function corresponding to the
+ * supplied module and name.  If no matching function exists, 0 is returned.
+ */
+
+static kstat_raw_reader_t lookup_raw_kstat_fn(char *module, char *name)
+{
+  char			key[KSTAT_STRLEN * 2];
+  register char		*f, *t;
+  SV			**entry;
+  kstat_raw_reader_t	fnp;
+
+  /* Copy across module & name, removing any digits - see comment above */
+  for (f = module, t = key; *f != '\0'; f++, t++) {
+    while (*f != '\0' && isdigit(*f)) { f++; }
+    *t = *f;
+  }
+  *t++ = ':';
+  for (f = name; *f != '\0'; f++, t++) {
+    while (*f != '\0' && isdigit(*f)) {
+      f++;
+    }
+    *t = *f;
+  }
+  *t = '\0';
+
+  /* look up & return the function, or teturn 0 if not found */
+  if ((entry = hv_fetch(raw_kstat_lookup, key, strlen(key), FALSE)) == 0)
+  {
+    fnp = 0;
+  } else {
+    fnp = (kstat_raw_reader_t)(uintptr_t)SvIV(*entry);
+  }
+  return (fnp);
+}
+
+/*
  * This module converts the flat list returned by kstat_read() into a perl hash
  * tree keyed on module, instance, name and statistic.  The following functions
  * provide code to create the nested hashes, and to iterate over them.
@@ -566,7 +602,7 @@ OUTPUT:
 
  # Scalar context: true/false
  # Array context: (\@added, \@deleted)
-  void
+void
 update(self)
   SV* self;
 PREINIT:
