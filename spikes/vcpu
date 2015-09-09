@@ -1,11 +1,13 @@
 #!/usr/bin/env perl
 
-use v5.22.0;
+use v5.18.1;
 use strict;
 use warnings;
 
+use JSON::MaybeXS;
 use Data::Dumper;
 use Solaris::kstat;
+use Time::HiRes  qw( gettimeofday tv_interval clock_nanosleep );
 use Clone qw( clone );
 
 my $fields = {
@@ -41,19 +43,20 @@ my $fields = {
 
 my $k = Solaris::kstat->new();
 
-# say Dumper( $k->{cpu} );
-
 my $i = 0;
 my @data;
 my $gen  = 0;
 
 while ($i++ < 300) {
+  my $t0 = [ gettimeofday ];
   $gen = $gen ^ 1;
   $data[$gen] = clone( $k->{cpu} );
-  my $snaptime_diff;
+  my $data_to_return = [];
 
   foreach my $cpu (sort { $a <=> $b } keys %{$data[$gen]}) {
-    if ($data[$gen ^ 1]) {
+    $data_to_return->[$cpu] = {};
+    $data_to_return->[$cpu]->{CPU} = $cpu;
+    if (defined($data[$gen ^ 1])) {
       foreach my $field ( qw(idl) ) {
         my ($name) = keys %{$fields->{$field}};
         my ($stat) = $fields->{$field}->{$name};
@@ -70,10 +73,15 @@ while ($i++ < 300) {
             )) * 100;
         my $rounded_pct = int($time_pct + 0.5);
         say "CPU $cpu: $field " . sprintf("%3.0f%%", $rounded_pct);
+        $data_to_return->[$cpu]->{$field} = $rounded_pct;
       }
     }
   }
 
+  say encode_json( $data_to_return );
   sleep(1);
   $k->update();
+  my $t1 = [ gettimeofday ];
+  my $elapsed = tv_interval( $t0, $t1 );
+  say "ELAPSED: $elapsed";
 }
