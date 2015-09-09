@@ -50,6 +50,7 @@ while ($i < 5) {
     my @values = ( $data[$gen]->{cpu_nsec_idle}   - $data[$gen ^ 1]->{cpu_nsec_idle},
                    $data[$gen]->{cpu_nsec_kernel} - $data[$gen ^ 1]->{cpu_nsec_kernel},
                    $data[$gen]->{cpu_nsec_user}   - $data[$gen ^ 1]->{cpu_nsec_user},
+                   # $data[$gen]->{cpu_nsec_intr}   - $data[$gen ^ 1]->{cpu_nsec_intr},
                  );
 
     my $divisor = ($data[$gen]->{snaptime} - $data[$gen ^ 1]->{snaptime}); # * 1000000000;
@@ -62,6 +63,13 @@ while ($i < 5) {
                        pct     => int($orig + .5), 
                      };
                    } @values;
+
+    # Check whether IDLE + SYS + USER + INTR = 100.0
+    my $grand_total;
+    foreach my $obj (@pcts) {
+      $grand_total += $obj->{orig};
+    }
+    diag "GRAND TOTAL: $grand_total";
 
     # Use a form of Largest Remainder Method
     my $pct_total = 0;

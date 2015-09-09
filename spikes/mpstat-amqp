@@ -1,0 +1,28 @@
+#!/usr/perl5/5.22.0/bin/perl
+
+use strict;
+use warnings;
+
+use Solaris::kstat;
+
+
+my $gen = 0;
+my $k = Solaris::kstat->new();
+
+while (1) {
+  # Update our stats
+  $k->update();
+
+  my ($now)  = {};
+  my ($cpus) = [];
+  my ($data) = [];
+  $gen = ($gen ^ 1);
+  $data->[$gen] = [];
+
+  # Iterate over all of the CPUs we find
+  foreach my $cpu (sort { $a <=> $b } keys %{$k->{cpu}}) {
+    #my @data_per_cpu = keys %{$k->{cpu}->{$cpu}->{sys}};
+  }
+
+  # Wait until a full second has elapsed since we started the loop
+}
