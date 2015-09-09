@@ -1,0 +1,79 @@
+#!/usr/bin/env perl
+
+use v5.22.0;
+use strict;
+use warnings;
+
+use Data::Dumper;
+use Solaris::kstat;
+use Clone qw( clone );
+
+my $fields = {
+  #field => { name => { value => stat } },
+  #minf  => { vm => { value => [ 'as_fault', 'hat_fault' ], }, },
+  #mjf   => { vm => { value => 'maj_fault', }, },
+  xcal  => { sys => { value => 'xcalls', }, },
+  intr  => { sys => { value => 'intr',
+                      width => 5, },
+           },
+  ithr  => { sys => { value => 'intrthread', }, },
+  csw   => { sys => { value => 'pswitch',
+                      width => 4, },
+           },
+  icsw  => { sys => { value => 'inv_swtch', }, },
+  migr  => { sys => { value => 'cpumigrate', }, },
+  smtx  => { sys => { value => 'mutex_adenters', }, },
+  syscl => { sys => { value => 'syscall', }, },
+  usr   => { sys => { value => 'cpu_nsec_user',
+                      time  => 1, },
+           },
+  sys   => { sys => { value => 'cpu_nsec_kernel',
+                      time  => 1, },
+           },
+  idl   => { sys => { value => 'cpu_nsec_idle',
+                      time  => 1, },
+           },
+  # NOTE: This is a subset of sys / cpu_nsec_kernel
+  intr  => { sys => { value => 'cpu_nsec_intr',
+                      time  => 1, },
+           },
+};
+
+my $k = Solaris::kstat->new();
+
+# say Dumper( $k->{cpu} );
+
+my $i = 0;
+my @data;
+my $gen  = 0;
+
+while ($i++ < 300) {
+  $gen = $gen ^ 1;
+  $data[$gen] = clone( $k->{cpu} );
+  my $snaptime_diff;
+
+  foreach my $cpu (sort { $a <=> $b } keys %{$data[$gen]}) {
+    if ($data[$gen ^ 1]) {
+      foreach my $field ( qw(idl) ) {
+        my ($name) = keys %{$fields->{$field}};
+        my ($stat) = $fields->{$field}->{$name};
+        #say "kstat name: $name";
+        #say "kstat stat info: " . Dumper( $stat );
+        #say "OLD: " . $data[$gen]->{$cpu}->{$name}->{snaptime};
+        #say "NEW: " . $data[$gen ^ 1]->{$cpu}->{$name}->{snaptime};
+        my $time_pct =
+          (($data[$gen]->{$cpu}->{$name}->{$stat->{value}} -
+            $data[$gen ^ 1]->{$cpu}->{$name}->{$stat->{value}}
+           )   /
+            ( $data[$gen]->{$cpu}->{$name}->{snaptime} -
+              $data[$gen ^ 1]->{$cpu}->{$name}->{snaptime}
+            )) * 100;
+        my $rounded_pct = int($time_pct + 0.5);
+        say "CPU $cpu: $field " . sprintf("%3.0f%%", $rounded_pct);
+      }
+    }
+  }
+
+  sleep(1);
+  $k->update();
+}
