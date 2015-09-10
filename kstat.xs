@@ -10,6 +10,8 @@
 
 /* kstat related includes */
 #include <kstat.h>
+/* for gethrtime() */
+#include <sys/time.h>
 
 /* Debug macros */
 #define DEBUG_ID "Solaris::kstat"
@@ -771,7 +773,15 @@ PPCODE:
     PUSHs(sv_2mortal(newSViv(ret)));
   }
 
-
+#
+# gethrtime() Utility Function
+#
+hrtime_t
+gethrtime(void)
+CODE:
+  RETVAL = gethrtime();
+OUTPUT:
+  RETVAL
 
 #
 # Destructor.  Closes the kstat connection

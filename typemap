@@ -3,3 +3,13 @@ AV*                          T_AVREF_REFCOUNT_FIXED
 HV*                          T_HVREF_REFCOUNT_FIXED
 CV*                          T_CVREF_REFCOUNT_FIXED
 SVREF                        T_SVREF_REFCOUNT_FIXED
+
+hrtime_t                     T_U_LONG_LONG
+
+INPUT
+T_U_LONG_LONG
+  $var = (unsigned long long)SvUV($arg)
+
+OUTPUT
+T_U_LONG_LONG
+  sv_setuv($arg, (UV)$var);
