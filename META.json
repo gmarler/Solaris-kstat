@@ -1,0 +1,83 @@
+{
+   "abstract" : "Solaris kstat consumer, implemented in Perl XS with 64-bits",
+   "author" : [
+      "Gordon Marler <gmarler@gmarler.com>"
+   ],
+   "dynamic_config" : 0,
+   "generated_by" : "Dist::Zilla version 5.037, CPAN::Meta::Converter version 2.150005",
+   "license" : [
+      "perl_5"
+   ],
+   "meta-spec" : {
+      "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
+      "version" : "2"
+   },
+   "name" : "Solaris-kstat",
+   "no_index" : {
+      "directory" : [
+         "t",
+         "xt",
+         "examples",
+         "corpus"
+      ],
+      "package" : [
+         "DB"
+      ]
+   },
+   "prereqs" : {
+      "configure" : {
+         "requires" : {
+            "ExtUtils::MakeMaker" : "0"
+         }
+      },
+      "develop" : {
+         "requires" : {
+            "File::Spec" : "0",
+            "File::Temp" : "0",
+            "IO::Handle" : "0",
+            "IPC::Open3" : "0",
+            "Pod::Coverage::TrustPod" : "0",
+            "Test::CPAN::Meta" : "0",
+            "Test::More" : "0",
+            "Test::Pod" : "1.41",
+            "Test::Pod::Coverage" : "1.08"
+         }
+      },
+      "runtime" : {
+         "requires" : {
+            "XSLoader" : "0",
+            "strict" : "0",
+            "warnings" : "0"
+         }
+      },
+      "test" : {
+         "recommends" : {
+            "CPAN::Meta" : "0",
+            "CPAN::Meta::Requirements" : "0"
+         },
+         "requires" : {
+            "Clone" : "0",
+            "Data::Dumper" : "0",
+            "ExtUtils::MakeMaker" : "0",
+            "File::Spec::Functions" : "0",
+            "List::Util" : "0",
+            "POSIX" : "0",
+            "Test::More" : "0",
+            "Test::Most" : "0"
+         }
+      }
+   },
+   "provides" : {
+      "Solaris::kstat" : {
+         "file" : "lib/Solaris/kstat.pm",
+         "version" : "0.001"
+      }
+   },
+   "release_status" : "stable",
+   "version" : "0.001",
+   "x_contributors" : [
+      "Gordon Marler <gmarler@bloomberg.net>",
+      "gmarler <gmarler@gmarler.com>"
+   ]
+}
+
