@@ -478,10 +478,10 @@ read_kstats(HV *self, int refresh)
   }
   switch (kip->kstat->ks_type) {
     case KSTAT_TYPE_RAW:
- /*   if ((fnp = lookup_raw_kstat_fn(kip->kstat->ks_module,
+      if ((fnp = lookup_raw_kstat_fn(kip->kstat->ks_module,
                                      kip->kstat->ks_name)) != 0) {
         fnp(self, kip->kstat, kip->strip_str);
-      } */
+      }
       break;
     case KSTAT_TYPE_NAMED:
       save_named(self, kip->kstat, kip->strip_str);
@@ -591,7 +591,7 @@ CODE:
     }
 
     /* Don't bother storing raw stats we don't understand */
- /* if (kp->ks_type == KSTAT_TYPE_RAW &&
+    if (kp->ks_type == KSTAT_TYPE_RAW &&
         lookup_raw_kstat_fn(kp->ks_module, kp->ks_name) == 0) {
 #ifdef REPORT_UNKNOWN
       (void)fprintf(stderr,
@@ -600,7 +600,7 @@ CODE:
                     kp->ks_ndata, kp->ks_data_size);
 #endif
       continue;
-    }   */
+    }
 
     /* Create a 3-layer hash hierarchy - module.instance.name */
     tie = get_tie(RETVAL, kp->ks_module, kp->ks_instance,
@@ -716,7 +716,7 @@ PPCODE:
       /* Don't bother storing raw stats we don't understand */
       if (kp->ks_type == KSTAT_TYPE_RAW &&
           lookup_raw_kstat_fn(kp->ks_module, kp->ks_name)
-          == 0) {
+            == 0) {
   #ifdef REPORT_UNKNOWN
         (void) printf("Unknown kstat type %s:%d:%s "
             "- %d of size %d\n", kp->ks_module,
