@@ -1,0 +1,24 @@
+#!/usr/bin/env perl
+
+use v5.18.1;
+use strict;
+use warnings;
+
+use Solaris::kstat;
+use Devel::Peek;
+use Clone qw(clone);
+use Time::HiRes qw( nanosleep );
+
+my $k = Solaris::kstat->new();
+
+#Dump $k, 65536;
+
+my $last;
+
+while (1) {
+  $last = clone($k);
+  $k->update();
+  nanosleep(250_000_000);
+  #Dump $k, 65536;
+}
+

@@ -94,10 +94,10 @@ static HV *raw_kstat_lookup;
 
 static kstat_raw_reader_t lookup_raw_kstat_fn(char *module, char *name)
 {
-  char			key[KSTAT_STRLEN * 2];
-  register char		*f, *t;
-  SV			**entry;
-  kstat_raw_reader_t	fnp;
+  char                  key[KSTAT_STRLEN * 2];
+  register char        *f, *t;
+  SV                  **entry;
+  kstat_raw_reader_t    fnp;
 
   /* Copy across module & name, removing any digits - see comment above */
   for (f = module, t = key; *f != '\0'; f++, t++) {
@@ -196,11 +196,25 @@ get_tie(SV *self, char *module, int instance, char *name, int *is_new)
 
     tie = newHV();
     tieref = newRV_noinc((SV *)tie);
-    stash = gv_stashpv("Solaris::kstat::_Stat", TRUE);
+    if (SvREFCNT(tieref) > 1) {
+      warn("just after newRV_noinc(), tieref REFCNT too high\n");
+    }
+    stash = gv_stashpv("Solaris::kstat::_Stat", GV_ADD);
     sv_bless(tieref, stash);
+    if (SvREFCNT(tieref) > 1) {
+      warn("just after sv_bless(), tieref REFCNT too high\n");
+    }
 
     /* Add TIEHASH magic */
-    hv_magic(hash, (GV *)tieref, 'P');
+    hv_magic(hash, (GV *)tieref, PERL_MAGIC_tied );
+    /*
+    if (SvREFCNT(tieref) > 1) {
+      warn("just after hv_magic(), tieref REFCNT too high\n");
+    }
+    */
+    /* Why do we have to decrement the reference count here??? */
+    SvREFCNT_dec(tieref);
+
     SvREADONLY_on(hash);
 
     /* Otherwise, just find the existing tied hash */
@@ -418,7 +432,10 @@ save_named(HV *self, kstat_t *kp, int strip_str)
       PERL_ASSERTMSG(0, "kstat_read: invalid data type");
       continue;
     }
-    hv_store(self, knp->name, strlen(knp->name), value, 0);
+    if (hv_store(self, knp->name, strlen(knp->name), value, 0) == NULL) {
+      warn("hv_store returns NULL at %d of %s (function %s)\n",
+           __FILE__, __LINE__, __func__);
+    }
   }
 }
 
@@ -455,7 +472,10 @@ read_kstats(HV *self, int refresh)
   }
 
   /* Save the read data */
-  hv_store(self, "snaptime", 8, NEW_HRTIME(kip->kstat->ks_snaptime), 0);
+  if (hv_store(self, "snaptime", 8, NEW_HRTIME(kip->kstat->ks_snaptime), 0) == NULL) {
+    warn("hv_store returns NULL at %d of %s (function %s)\n",
+         __FILE__, __LINE__, __func__);
+  }
   switch (kip->kstat->ks_type) {
     case KSTAT_TYPE_RAW:
  /*   if ((fnp = lookup_raw_kstat_fn(kip->kstat->ks_module,
@@ -587,8 +607,14 @@ CODE:
                           kp->ks_name, 0);
 
     /* Save the data necessary to read the kstat info on demand */
-    hv_store(tie, "class", 5, newSVpv(kp->ks_class, 0), 0);
-    hv_store(tie, "crtime", 6, NEW_HRTIME(kp->ks_crtime), 0);
+    if (hv_store(tie, "class", 5, newSVpv(kp->ks_class, 0), 0) == NULL) {
+      warn("hv_store returns NULL at %d of %s (function %s)\n",
+           __FILE__, __LINE__, __func__);
+    }
+    if (hv_store(tie, "crtime", 6, NEW_HRTIME(kp->ks_crtime), 0) == NULL) {
+      warn("hv_store returns NULL at %d of %s (function %s)\n",
+           __FILE__, __LINE__, __func__);
+    }
     kstatinfo.kstat = kp;
     kstatsv = newSVpv((char *)&kstatinfo, sizeof (kstatinfo));
     sv_magic((SV *)tie, kstatsv, '~', 0, 0);
@@ -712,10 +738,17 @@ PPCODE:
          * Save the data necessary to read the kstat
          * info on demand
          */
-        hv_store(tie, "class", 5,
-            newSVpv(kp->ks_class, 0), 0);
-        hv_store(tie, "crtime", 6,
-            NEW_HRTIME(kp->ks_crtime), 0);
+        if (hv_store(tie, "class", 5,
+                     newSVpv(kp->ks_class, 0), 0) == NULL) {
+
+          warn("hv_store returns NULL at %d of %s (function %s)\n",
+               __FILE__, __LINE__, __func__);
+        }
+        if (hv_store(tie, "crtime", 6,
+                     NEW_HRTIME(kp->ks_crtime), 0)) {
+          warn("hv_store returns NULL at %d of %s (function %s)\n",
+               __FILE__, __LINE__, __func__);
+        }
         kstatinfo.kstat = kp;
         kstatsv = newSVpv((char *)&kstatinfo,
             sizeof (kstatinfo));
@@ -788,7 +821,7 @@ CODE:
   PERL_ASSERTMSG(mg != 0, "DESTROY: lost ~ magic");
   kc = *(kstat_ctl_t **)SvPVX(mg->mg_obj);
   if (kstat_close(kc) != 0) {
-    croak(DEBUG_ID ": kstat_close: failed");
+    croak(DEBUG_ID ": kstat_close: failed with errno %d", errno);
   }
 
 #
@@ -947,5 +980,11 @@ CODE:
   kip = (KstatInfo_t *)SvPVX(mg->mg_obj);
   kip->read  = FALSE;
   kip->valid = TRUE;
-  hv_store((HV *)self, "class", 5, newSVpv(kip->kstat->ks_class, 0), 0);
-  hv_store((HV *)self, "crtime", 6, NEW_HRTIME(kip->kstat->ks_crtime), 0);
+  if (hv_store((HV *)self, "class", 5, newSVpv(kip->kstat->ks_class, 0), 0) == NULL) {
+    warn("hv_store returns NULL at %d of %s (function %s)\n",
+         __FILE__, __LINE__, __func__);
+  }
+  if (hv_store((HV *)self, "crtime", 6, NEW_HRTIME(kip->kstat->ks_crtime), 0) == NULL) {
+    warn("hv_store returns NULL at %d of %s (function %s)\n",
+         __FILE__, __LINE__, __func__);
+  }
