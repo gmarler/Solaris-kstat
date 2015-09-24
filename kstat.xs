@@ -156,7 +156,7 @@ get_tie(SV *self, char *module, int instance, char *name, int *is_new)
   key[1] = str_inst;
   key[2] = name;
 
-  warn("Creating tie for %s:%s:%s\n",key[0],key[1],key[2]);
+  /* warn("Creating tie for %s:%s:%s\n",key[0],key[1],key[2]); */
 
   /* Iteratively descend the tree, creating new hashes as required */
   hash = (HV *)SvRV(self);
@@ -434,7 +434,7 @@ save_named(HV *self, kstat_t *kp, int strip_str)
       PERL_ASSERTMSG(0, "kstat_read: invalid data type");
       continue;
     }
-    warn("save_named: Storing %s\n",knp->name);
+    /* warn("save_named: Storing %s\n",knp->name); */
     if (hv_store(self, knp->name, strlen(knp->name), value, 0) == NULL) {
       warn("hv_store returns NULL at %d of %s (function %s)\n",
            __FILE__, __LINE__, __func__);
@@ -469,7 +469,7 @@ read_kstats(HV *self, int refresh)
     warn("reading cached kstat\n");
     return (1);
   } else {
-    warn("reading kstat for the first time\n");
+    /* warn("reading kstat for the first time\n"); */
   }
 
   /* Read the kstats and return 0 if this fails */
@@ -810,21 +810,44 @@ PPCODE:
     PUSHs(sv_2mortal(newSViv(ret)));
   }
 
-int
+SV *
 copy(self)
   SV *self;
 PREINIT:
   MAGIC       *mg;
   HV          *hash1;
+  /* Copy hashes (no magic or ties) */
+  HV          *chash1, *chash2, *chash3, *chash4;
   HE          *entry1;
   char        *module, *instance, *name, *key;
 CODE:
+  /* Create an unblessed hashref */
+  RETVAL = (SV *)newRV_noinc((SV *)newHV());
+
+  /* Iterate each level of our existing hash */
   hash1 = (HV *)SvRV(self);
   hv_iterinit(hash1);
+
   /* Iterate over each module */
   while ((entry1 = hv_iternext(hash1))) {
+    /* Where we're copying to */
+    SV **centry1;
+    HV *newhash;
+    SV *rv;
+    /* What we're descending into next */
     HV *hash2;
     HE *entry2;
+
+    /* Look for the entry in our level 1 hash copy (it won't be there), creating
+       an empty entry that we'll fill in immediately with the new level 2
+       hashref */
+    centry1 = hv_fetch((HV *)SvRV(RETVAL), HePV(entry1, PL_na ),
+                       strlen(HePV(entry1, PL_na )), TRUE);
+
+    newhash = newHV();
+    rv = newRV_noinc((SV *)newhash);
+    sv_setsv(*centry1, rv);
+    SvREFCNT_dec(rv);
 
     module = HePV(entry1, PL_na);
     /* warn("module %s\n",module); */
@@ -846,23 +869,40 @@ CODE:
       /* Iterate over each module:instance:name */
       while ((entry3 = hv_iternext(hash3))) {
         HV    *hash4;
+        HE    *entry4;
         MAGIC *mg;
         HV    *tie;
+        I32    retlen;
 
         name = HePV(entry3, PL_na);
+
         hash4 = (HV *)SvRV(hv_iterval(hash3, entry3));
         /* warn("module:instance:name %s:%s:%s\n", module, instance, name); */
 
         /* If the module:instance:name hash exists, keep/copy it */
-        if (HvKEYS(hash4) > 0) {
+        mg = mg_find((SV *)hash4, 'P');
+        PERL_ASSERTMSG(mg != 0,
+            "prune_invalid: lost P magic");
+        tie = (HV *)SvRV(mg->mg_obj);
+
+        while (entry4 = hv_iternext(hash4)) {
+          /*
+          warn("$k->{%s}->{%s}->{%s}->{%s}\n",
+               module, instance, name, hv_iterkey(entry4, &retlen));
+           */
+        }
+
+        /*
+        if (HvKEYS(tie) > 0) {
           warn("%s:%s:%s IS GOOD FOR COPYING\n",
                module, instance, name);
         }
+        */
+
 
       }
     }
   }
-  RETVAL = 1;
 OUTPUT:
   RETVAL
 
