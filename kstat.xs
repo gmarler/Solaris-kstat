@@ -156,6 +156,8 @@ get_tie(SV *self, char *module, int instance, char *name, int *is_new)
   key[1] = str_inst;
   key[2] = name;
 
+  warn("Creating tie for %s:%s:%s\n",key[0],key[1],key[2]);
+
   /* Iteratively descend the tree, creating new hashes as required */
   hash = (HV *)SvRV(self);
   for (k = 0; k < 3; k++) {
@@ -432,6 +434,7 @@ save_named(HV *self, kstat_t *kp, int strip_str)
       PERL_ASSERTMSG(0, "kstat_read: invalid data type");
       continue;
     }
+    warn("save_named: Storing %s\n",knp->name);
     if (hv_store(self, knp->name, strlen(knp->name), value, 0) == NULL) {
       warn("hv_store returns NULL at %d of %s (function %s)\n",
            __FILE__, __LINE__, __func__);
@@ -463,7 +466,10 @@ read_kstats(HV *self, int refresh)
 
   /* Return early if we don't need to actually read the kstats */
   if ((refresh && ! kip->read) || (! refresh && kip->read)) {
+    warn("reading cached kstat\n");
     return (1);
+  } else {
+    warn("reading kstat for the first time\n");
   }
 
   /* Read the kstats and return 0 if this fails */
@@ -804,7 +810,61 @@ PPCODE:
     PUSHs(sv_2mortal(newSViv(ret)));
   }
 
+int
+copy(self)
+  SV *self;
+PREINIT:
+  MAGIC       *mg;
+  HV          *hash1;
+  HE          *entry1;
+  char        *module, *instance, *name, *key;
+CODE:
+  hash1 = (HV *)SvRV(self);
+  hv_iterinit(hash1);
+  /* Iterate over each module */
+  while ((entry1 = hv_iternext(hash1))) {
+    HV *hash2;
+    HE *entry2;
 
+    module = HePV(entry1, PL_na);
+    /* warn("module %s\n",module); */
+
+    hash2 = (HV *)SvRV(hv_iterval(hash1, entry1));
+    hv_iterinit(hash2);
+
+    /* Iterate over each module:instance */
+    while ((entry2 = hv_iternext(hash2))) {
+      HV *hash3;
+      HE *entry3;
+
+      instance = HePV(entry2, PL_na);
+      /* warn("module:instance %s:%s\n", module, instance); */
+
+      hash3 = (HV *)SvRV(hv_iterval(hash2, entry2));
+      hv_iterinit(hash3);
+
+      /* Iterate over each module:instance:name */
+      while ((entry3 = hv_iternext(hash3))) {
+        HV    *hash4;
+        MAGIC *mg;
+        HV    *tie;
+
+        name = HePV(entry3, PL_na);
+        hash4 = (HV *)SvRV(hv_iterval(hash3, entry3));
+        /* warn("module:instance:name %s:%s:%s\n", module, instance, name); */
+
+        /* If the module:instance:name hash exists, keep/copy it */
+        if (HvKEYS(hash4) > 0) {
+          warn("%s:%s:%s IS GOOD FOR COPYING\n",
+               module, instance, name);
+        }
+
+      }
+    }
+  }
+  RETVAL = 1;
+OUTPUT:
+  RETVAL
 
 #
 # Destructor.  Closes the kstat connection
