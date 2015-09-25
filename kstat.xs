@@ -820,7 +820,7 @@ PREINIT:
   SV          *cmodule_hash_rv;
   HV          *cmodule_hash, *cinstance_hash, *cname_hash, *chash4;
   HE          *omodule_entry;
-  char        *module, *instance, *name, *key;
+  char        *module, *instance, *name, *stat;
 CODE:
   /* Create an unblessed hashref to build, copy into, and return */
   cmodule_hash_rv = (SV *)newRV_noinc((SV *)newHV());
@@ -844,7 +844,6 @@ CODE:
        creating the key pointing to an empty entry that we'll fill in
        immediately with the new level 2 hashref */
     module = HePV(omodule_entry, PL_na);
-    warn("Copying for module %s\n",module);
     cmodule_entry = hv_fetch(cmodule_hash, module, strlen(module), TRUE);
 
     cinstance_hash = newHV();
@@ -853,13 +852,10 @@ CODE:
     SvREFCNT_dec(cinstance_hash_rv);
 
     oinstance_hash = (HV *)SvRV(hv_iterval(omodule_hash, omodule_entry));
-    warn("Selecting oinstance_hash\n");
     hv_iterinit(oinstance_hash);
-    warn("Setting up hv_iterinit() for oinstance_hash\n");
 
     /* Iterate over each module:instance */
     while ((oinstance_entry = hv_iternext(oinstance_hash))) {
-      warn("Got oinstance_entry for hv_iternext(oinstance_hash)\n");
       /* Where we're copying to */
       SV **cinstance_entry;
       SV  *cname_hash_rv;
@@ -871,53 +867,67 @@ CODE:
          creating the key pointing to an empty entry that we'll fill in
          immediately with the new level 3 hashref */
       instance = HePV(oinstance_entry, PL_na);
-      warn("Copying for module:instance %s:%s\n", module, instance);
-      warn("FETCHING into cinstance_entry\n");
       cinstance_entry = hv_fetch(cinstance_hash, instance, strlen(instance),
                                  TRUE);
-      warn("GOT cinstance_entry: %s\n", instance);
-  
+
       cname_hash = newHV();
       cname_hash_rv = newRV_noinc((SV *)cname_hash);
       sv_setsv(*cinstance_entry, cname_hash_rv);
       SvREFCNT_dec(cname_hash_rv);
-      warn("Created reference for cname_hash\n");
 
       oname_hash = (HV *)SvRV(hv_iterval(oinstance_hash, oinstance_entry));
       hv_iterinit(oname_hash);
 
       /* Iterate over each module:instance:name */
       while ((oname_entry = hv_iternext(oname_hash))) {
-        HV    *hash4;
-        HE    *entry4;
-        MAGIC *mg;
-        HV    *tie;
-        I32    retlen;
+        /* Where we're copying to */
+        SV    **cname_entry;
+        HV     *cstat_hash;
+        SV     *cstat_hash_rv;
+        HV     *ostat_hash;
+        HE     *ostat_entry;
+        MAGIC  *mg;
+        HV     *tie;
+        I32     retlen;
 
+      /* Look for the module key in our level 3 hash copy (it won't be there),
+         creating the key pointing to an empty entry that we'll fill in
+         immediately with the new level 4 hashref (or hash?) */
         name = HePV(oname_entry, PL_na);
+        cname_entry = hv_fetch(cname_hash, name, strlen(name), TRUE);
 
-        hash4 = (HV *)SvRV(hv_iterval(oname_hash, oname_entry));
+        cstat_hash = newHV();
+        cstat_hash_rv = newRV_noinc((SV *)cstat_hash);
+        sv_setsv(*cname_entry, cstat_hash_rv);
+        SvREFCNT_dec(cstat_hash_rv);
+
+        ostat_hash = (HV *)SvRV(hv_iterval(oname_hash, oname_entry));
         /* warn("module:instance:name %s:%s:%s\n", module, instance, name); */
 
-        /* If the module:instance:name hash exists, keep/copy it */
-        mg = mg_find((SV *)hash4, 'P');
+        /* If the module:instance:name hash exists, copy it */
+        mg = mg_find((SV *)ostat_hash, 'P');
         PERL_ASSERTMSG(mg != 0,
             "prune_invalid: lost P magic");
         tie = (HV *)SvRV(mg->mg_obj);
 
-        while (entry4 = hv_iternext(hash4)) {
+        /* while (ostat_entry = hv_iternext(ostat_hash)) { */
+        while (ostat_entry = hv_iternext(tie)) {
+          SV    **cstat_entry;
+          SV     *valcopy = newSV(1);
+
+          stat = HePV(ostat_entry, PL_na);
+          cstat_entry = hv_fetch(cstat_hash, stat, strlen(stat), TRUE);
+
+          /* Copy the data out of the ostat_entry SV into our own SV in the
+             cstat_entry */
+          SvSetSV(valcopy, HeVAL(ostat_entry));
+          sv_setsv(*cstat_entry, valcopy);
+
           /*
           warn("$k->{%s}->{%s}->{%s}->{%s}\n",
-               module, instance, name, hv_iterkey(entry4, &retlen));
+               module, instance, name, hv_iterkey(ostat_entry, &retlen));
            */
         }
-
-        /*
-        if (HvKEYS(tie) > 0) {
-          warn("%s:%s:%s IS GOOD FOR COPYING\n",
-               module, instance, name);
-        }
-        */
 
       }
     }
