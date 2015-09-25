@@ -815,68 +815,88 @@ copy(self)
   SV *self;
 PREINIT:
   MAGIC       *mg;
-  HV          *hash1;
+  HV          *omodule_hash, *oinstance_hash, *oname_hash;
   /* Copy hashes (no magic or ties) */
-  HV          *chash1, *chash2, *chash3, *chash4;
-  HE          *entry1;
+  SV          *cmodule_hash_rv;
+  HV          *cmodule_hash, *cinstance_hash, *cname_hash, *chash4;
+  HE          *omodule_entry;
   char        *module, *instance, *name, *key;
 CODE:
-  /* Create an unblessed hashref */
-  RETVAL = (SV *)newRV_noinc((SV *)newHV());
+  /* Create an unblessed hashref to build, copy into, and return */
+  cmodule_hash_rv = (SV *)newRV_noinc((SV *)newHV());
+  RETVAL = cmodule_hash_rv;
+  cmodule_hash = (HV *)SvRV(cmodule_hash_rv);
 
   /* Iterate each level of our existing hash */
-  hash1 = (HV *)SvRV(self);
-  hv_iterinit(hash1);
+  omodule_hash = (HV *)SvRV(self);
+  hv_iterinit(omodule_hash);
 
   /* Iterate over each module */
-  while ((entry1 = hv_iternext(hash1))) {
+  while ((omodule_entry = hv_iternext(omodule_hash))) {
     /* Where we're copying to */
-    SV **centry1;
-    HV *newhash;
-    SV *rv;
+    SV **cmodule_entry;
+    SV  *cinstance_hash_rv;
     /* What we're descending into next */
-    HV *hash2;
-    HE *entry2;
+    HV *oinstance_hash;
+    HE *oinstance_entry;
 
-    /* Look for the entry in our level 1 hash copy (it won't be there), creating
-       an empty entry that we'll fill in immediately with the new level 2
-       hashref */
-    centry1 = hv_fetch((HV *)SvRV(RETVAL), HePV(entry1, PL_na ),
-                       strlen(HePV(entry1, PL_na )), TRUE);
+    /* Look for the module key in our level 1 hash copy (it won't be there),
+       creating the key pointing to an empty entry that we'll fill in
+       immediately with the new level 2 hashref */
+    module = HePV(omodule_entry, PL_na);
+    warn("Copying for module %s\n",module);
+    cmodule_entry = hv_fetch(cmodule_hash, module, strlen(module), TRUE);
 
-    newhash = newHV();
-    rv = newRV_noinc((SV *)newhash);
-    sv_setsv(*centry1, rv);
-    SvREFCNT_dec(rv);
+    cinstance_hash = newHV();
+    cinstance_hash_rv = newRV_noinc((SV *)cinstance_hash);
+    sv_setsv(*cmodule_entry, cinstance_hash_rv);
+    SvREFCNT_dec(cinstance_hash_rv);
 
-    module = HePV(entry1, PL_na);
-    /* warn("module %s\n",module); */
-
-    hash2 = (HV *)SvRV(hv_iterval(hash1, entry1));
-    hv_iterinit(hash2);
+    oinstance_hash = (HV *)SvRV(hv_iterval(omodule_hash, omodule_entry));
+    warn("Selecting oinstance_hash\n");
+    hv_iterinit(oinstance_hash);
+    warn("Setting up hv_iterinit() for oinstance_hash\n");
 
     /* Iterate over each module:instance */
-    while ((entry2 = hv_iternext(hash2))) {
-      HV *hash3;
-      HE *entry3;
+    while ((oinstance_entry = hv_iternext(oinstance_hash))) {
+      warn("Got oinstance_entry for hv_iternext(oinstance_hash)\n");
+      /* Where we're copying to */
+      SV **cinstance_entry;
+      SV  *cname_hash_rv;
+      /* What we're descending into next */
+      HV *oname_hash;
+      HE *oname_entry;
 
-      instance = HePV(entry2, PL_na);
-      /* warn("module:instance %s:%s\n", module, instance); */
+      /* Look for the module key in our level 2 hash copy (it won't be there),
+         creating the key pointing to an empty entry that we'll fill in
+         immediately with the new level 3 hashref */
+      instance = HePV(oinstance_entry, PL_na);
+      warn("Copying for module:instance %s:%s\n", module, instance);
+      warn("FETCHING into cinstance_entry\n");
+      cinstance_entry = hv_fetch(cinstance_hash, instance, strlen(instance),
+                                 TRUE);
+      warn("GOT cinstance_entry: %s\n", instance);
+  
+      cname_hash = newHV();
+      cname_hash_rv = newRV_noinc((SV *)cname_hash);
+      sv_setsv(*cinstance_entry, cname_hash_rv);
+      SvREFCNT_dec(cname_hash_rv);
+      warn("Created reference for cname_hash\n");
 
-      hash3 = (HV *)SvRV(hv_iterval(hash2, entry2));
-      hv_iterinit(hash3);
+      oname_hash = (HV *)SvRV(hv_iterval(oinstance_hash, oinstance_entry));
+      hv_iterinit(oname_hash);
 
       /* Iterate over each module:instance:name */
-      while ((entry3 = hv_iternext(hash3))) {
+      while ((oname_entry = hv_iternext(oname_hash))) {
         HV    *hash4;
         HE    *entry4;
         MAGIC *mg;
         HV    *tie;
         I32    retlen;
 
-        name = HePV(entry3, PL_na);
+        name = HePV(oname_entry, PL_na);
 
-        hash4 = (HV *)SvRV(hv_iterval(hash3, entry3));
+        hash4 = (HV *)SvRV(hv_iterval(oname_hash, oname_entry));
         /* warn("module:instance:name %s:%s:%s\n", module, instance, name); */
 
         /* If the module:instance:name hash exists, keep/copy it */
@@ -898,7 +918,6 @@ CODE:
                module, instance, name);
         }
         */
-
 
       }
     }

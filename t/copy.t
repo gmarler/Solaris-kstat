@@ -21,4 +21,17 @@ my @c_module_keys = keys %{$c};
 cmp_bag( \@c_module_keys, \@k_module_keys,
          'Copy module keys should be complete' );
 
+foreach my $module (@k_module_keys) {
+  my @k_instance_keys = keys %{$k->{$module}};
+  my @c_instance_keys = keys %{$c->{$module}};
+  cmp_bag( \@c_instance_keys, \@k_instance_keys,
+           "Copy of instance keys for module $module is complete" );
+  #foreach my $instance (@k_instance_keys) {
+  #  my @k_name_keys = keys %{$k->{$module}->{$instance}};
+  #  my @c_name_keys = keys %{$c->{$module}->{$instance}};
+  #  cmp_bag( \@c_name_keys, \@k_name_keys,
+  #           "Copy of name keys for instance $instance of module $module is complete" );
+  #}
+}
+
 done_testing();
