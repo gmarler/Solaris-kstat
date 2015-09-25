@@ -742,14 +742,16 @@ PPCODE:
          */
         if (hv_store(tie, "class", 5,
                      newSVpv(kp->ks_class, 0), 0) == NULL) {
-
-          warn("hv_store returns NULL at %d of %s (function %s)\n",
-               __FILE__, __LINE__, __func__);
+          warn("hv_store of class returns NULL");
         }
         if (hv_store(tie, "crtime", 6,
-                     NEW_HRTIME(kp->ks_crtime), 0)) {
+                     NEW_HRTIME(kp->ks_crtime), 0) == NULL) {
+          /* This seems to cause a core dump */
+          /*
           warn("hv_store returns NULL at %d of %s (function %s)\n",
                __FILE__, __LINE__, __func__);
+          */
+          warn("hv_store of crtime returns NULL");
         }
         kstatinfo.kstat = kp;
         kstatsv = newSVpv((char *)&kstatinfo,
