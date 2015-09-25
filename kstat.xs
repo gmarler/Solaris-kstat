@@ -904,6 +904,7 @@ CODE:
         SvREFCNT_dec(cstat_hash_rv);
 
         ostat_hash = (HV *)SvRV(hv_iterval(oname_hash, oname_entry));
+        hv_iterinit(ostat_hash);
         /* warn("module:instance:name %s:%s:%s\n", module, instance, name); */
 
         /* If the module:instance:name hash exists, copy it */
