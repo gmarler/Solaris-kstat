@@ -466,7 +466,7 @@ read_kstats(HV *self, int refresh)
 
   /* Return early if we don't need to actually read the kstats */
   if ((refresh && ! kip->read) || (! refresh && kip->read)) {
-    warn("reading cached kstat\n");
+    /* warn("reading cached kstat\n"); */
     return (1);
   } else {
     /* warn("reading kstat for the first time\n"); */
@@ -911,16 +911,58 @@ CODE:
         tie = (HV *)SvRV(mg->mg_obj);
 
         /* while (ostat_entry = hv_iternext(ostat_hash)) { */
-        while (ostat_entry = hv_iternext(tie)) {
+        while (ostat_entry = hv_iternext(ostat_hash)) {
           SV    **cstat_entry;
-          SV     *valcopy = newSV(1);
+          SV     *valcopy = newSV(0);
+          SV    **valptr;
 
-          stat = HePV(ostat_entry, PL_na);
+          SV     *statkey;
+          SV     *val;
+          HE     *valent;
+          /*
+          char   *val_pv;
+          long long     val_iv;
+          unsigned long long     val_uv;
+          unsigned long     val_length;
+          */
+
+          statkey     = HeSVKEY(ostat_entry);
+          stat        = HePV(ostat_entry, PL_na);
+          /* val         = HeVAL(ostat_entry); */
+          valent      = hv_fetch_ent(ostat_hash, statkey, 0, 0);
+          val         = HeVAL(valent);
+          /* stat        = HePV(ostat_entry, PL_na); */
           cstat_entry = hv_fetch(cstat_hash, stat, strlen(stat), TRUE);
+          /*
+          warn("Working on %s:%s:%s:%s\n",
+               module, instance, name, stat);
+          */
+          if (val == NULL) {
+            warn("%s:%s:%s:%s is NULL\n",
+                  module, instance, name, stat);
+            continue;
+          }
+          /*
+          val_pv = SvPV_force(val, val_length);
+          warn("string value of %s:%s:%s:%s is  %s\n",
+                 module, instance, name, stat, val_pv);
+          */
+          /*
+          if (SvIOK(val)) {
+            val_iv = SvIV(val);
+            warn("Signed integer value of %s:%s:%s:%s is  %lld\n",
+                   module, instance, name, stat, val_iv);
+          }
+          if (SvIOK_UV(val)) {
+            val_uv = SvUV(val);
+            warn("Unigned integer value of %s:%s:%s:%s is  %ull\n",
+                   module, instance, name, stat, val_uv);
+          }
+          */
 
           /* Copy the data out of the ostat_entry SV into our own SV in the
              cstat_entry */
-          SvSetSV(valcopy, HeVAL(ostat_entry));
+          SvSetSV(valcopy, val);
           sv_setsv(*cstat_entry, valcopy);
 
           /*
