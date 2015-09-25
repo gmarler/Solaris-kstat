@@ -1,6 +1,7 @@
 use Test::Most;
 
 use Solaris::kstat;
+use Data::Dumper;
 
 my $k = Solaris::kstat->new;
 
@@ -39,5 +40,8 @@ foreach my $module (@k_module_keys) {
     #}
   }
 }
+
+diag Dumper( [ keys %{$k->{cpu}->{0}->{sys}} ] );
+diag Dumper( [ keys %{$c->{cpu}->{0}->{sys}} ] );
 
 done_testing();
