@@ -939,7 +939,8 @@ CODE:
           /* warn("copy: %s:%s:%s has never been read",module,instance,name); */
           continue;
         } else {
-          warn("copy: %s:%s:%s has been read - COPYING it",module,instance,name);
+          /* warn("copy: %s:%s:%s has been read - COPYING it",
+                  module,instance,name); */
         }
 
 
