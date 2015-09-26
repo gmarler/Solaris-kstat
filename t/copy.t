@@ -12,9 +12,13 @@ isa_ok($k, 'Solaris::kstat',
 #   'CPU 0 stats should not yet exist' );
 
 
-# () = keys %{$k->{cpu}->{0}->{sys}};
+() = each %{$k->{cpu}->{0}->{sys}};
+my $gen = 0;
+my @stat_copies;
+
 
 my $c = $k->copy();
+$stat_copies[$gen] = $c;
 
 my @k_module_keys = keys %{$k};
 my @c_module_keys = keys %{$c};
@@ -60,5 +64,34 @@ foreach my $stat (@k_cpu0_stat_keys) {
 
 #diag Dumper( [ keys %{$k->{cpu}->{0}->{sys}} ] );
 #diag Dumper( [ keys %{$c->{cpu}->{0}->{sys}} ] );
+
+for (my $i = 0; $i < 10; $i++) {
+  my ($preupdate, $postupdate, $postcopy, $update_lat, $copy_lat);
+  $gen = $gen ^ 1;
+  $preupdate = $k->gethrtime();
+  diag "PREUPDATE:  $preupdate";
+  $k->update();
+  $postupdate = $k->gethrtime();
+  diag "POSTUPDATE: $postupdate";
+  $stat_copies[$gen] = $k->copy();
+  $postcopy = $k->gethrtime();
+  diag "POSTCOPY:   $postcopy";
+
+  $update_lat = $postupdate - $preupdate;
+  $copy_lat   = $postcopy - $postupdate;
+
+  diag "Update Latency: $update_lat nsecs";
+  diag "Copy Latency:   $copy_lat nsecs";
+
+  # invariant: newest is always $gen, oldest is always $gen ^ 1
+  cmp_ok( $stat_copies[$gen ^ 1]->{cpu}->{0}->{sys}->{snaptime}, '<',
+          $stat_copies[$gen]->{cpu}->{0}->{sys}->{snaptime},
+          'Old CPU 0 stat snaptime is < current one' );
+}
+
+foreach my $stat ( qw( cpu_nsec_user cpu_nsec_kernel cpu_nsec_idle ) ) {
+  diag "$stat " . $stat_copies[$gen ^ 1]->{cpu}->{0}->{sys}->{$stat} ." ".
+                  $stat_copies[$gen]->{cpu}->{0}->{sys}->{$stat};
+}
 
 done_testing();

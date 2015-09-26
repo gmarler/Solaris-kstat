@@ -725,12 +725,12 @@ PPCODE:
       if (kp->ks_type == KSTAT_TYPE_RAW &&
           lookup_raw_kstat_fn(kp->ks_module, kp->ks_name)
             == 0) {
-  #ifdef REPORT_UNKNOWN
+#ifdef REPORT_UNKNOWN
         (void) printf("Unknown kstat type %s:%d:%s "
             "- %d of size %d\n", kp->ks_module,
             kp->ks_instance, kp->ks_name,
             kp->ks_ndata, kp->ks_data_size);
-  #endif
+#endif
         continue;
       }
   
@@ -814,6 +814,17 @@ PPCODE:
     PUSHs(sv_2mortal(newSViv(ret)));
   }
 
+#
+# gethrtime() Utility Function
+#
+hrtime_t
+gethrtime(void)
+CODE:
+  RETVAL = gethrtime();
+OUTPUT:
+  RETVAL
+
+
 SV *
 copy(self)
   SV *self;
@@ -893,6 +904,7 @@ CODE:
         MAGIC  *mg;
         HV     *tie;
         I32     retlen;
+        KstatInfo_t        *kip;
 
       /* Look for the module key in our level 3 hash copy (it won't be there),
          creating the key pointing to an empty entry that we'll fill in
@@ -910,10 +922,26 @@ CODE:
         /* warn("module:instance:name %s:%s:%s\n", module, instance, name); */
 
         /* If the module:instance:name hash exists, copy it */
+        /* Get P magic off of the hash, and get the tie */
         mg = mg_find((SV *)ostat_hash, 'P');
         PERL_ASSERTMSG(mg != 0,
-            "prune_invalid: lost P magic");
+            "copy: lost P magic");
         tie = (HV *)SvRV(mg->mg_obj);
+
+        /* Find the MAGIC KstatInfo_t data structure */
+        /* For some reason, the '~' magic has been lost */
+        /* Get ~ magic off of the tie */
+        mg = mg_find((SV *)tie, '~');
+        PERL_ASSERTMSG(mg != 0, "copy: lost ~ magic");
+
+        kip = (KstatInfo_t *)SvPVX(mg->mg_obj);
+        if (!kip->read) {
+          /* warn("copy: %s:%s:%s has never been read",module,instance,name); */
+          continue;
+        } else {
+          warn("copy: %s:%s:%s has been read - COPYING it",module,instance,name);
+        }
+
 
         /* while (ostat_entry = hv_iternext(ostat_hash)) { */
         while (ostat_entry = hv_iternext(ostat_hash)) {
@@ -979,14 +1007,6 @@ CODE:
       }
     }
   }
-
-#
-# gethrtime() Utility Function
-#
-hrtime_t
-gethrtime(void)
-CODE:
-  RETVAL = gethrtime();
 OUTPUT:
   RETVAL
 
