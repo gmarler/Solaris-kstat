@@ -70,11 +70,11 @@
    "provides" : {
       "Solaris::kstat" : {
          "file" : "lib/Solaris/kstat.pm",
-         "version" : "0.002"
+         "version" : "0.003"
       }
    },
    "release_status" : "stable",
-   "version" : "0.002",
+   "version" : "0.003",
    "x_contributors" : [
       "Gordon Marler <gmarler@bloomberg.net>",
       "gmarler <gmarler@gmarler.com>"
