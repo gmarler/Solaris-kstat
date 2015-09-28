@@ -58,23 +58,26 @@
          "requires" : {
             "Clone" : "0",
             "Data::Dumper" : "0",
+            "Devel::Peek" : "0",
             "ExtUtils::MakeMaker" : "0",
             "File::Spec::Functions" : "0",
             "List::Util" : "0",
             "POSIX" : "0",
             "Test::More" : "0",
-            "Test::Most" : "0"
+            "Test::Most" : "0",
+            "Test::Refcount" : "0",
+            "perl" : "v5.18.1"
          }
       }
    },
    "provides" : {
       "Solaris::kstat" : {
          "file" : "lib/Solaris/kstat.pm",
-         "version" : "0.003"
+         "version" : "0.004"
       }
    },
    "release_status" : "stable",
-   "version" : "0.003",
+   "version" : "0.004",
    "x_contributors" : [
       "Gordon Marler <gmarler@bloomberg.net>",
       "gmarler <gmarler@gmarler.com>"
