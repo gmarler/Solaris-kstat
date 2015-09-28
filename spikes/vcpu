@@ -98,7 +98,22 @@ while (1) {
   $data[$gen] = $k->copy();
   my $data_to_return = [];
 
+  if (scalar(keys %{$data[$gen]->{cpu}}) !=
+      scalar(keys %{$data[$gen ^ 1]->{cpu}})) {
+    # If this condition is true, there's been a change in the count of CPUs
+    # (cpus going offline, or offline/online - in this case, we need to reprime
+    # the $k data structure
+    foreach my $instance ( keys %{$k->{cpu}} ) {
+      () = each %{$k->{cpu}->{$instance}->{sys}};
+    }
+  }
   foreach my $cpu (sort { $a <=> $b } keys %{$data[$gen]->{cpu}}) {
+    # In the case where the # of CPUs has increased/decreased due to
+    # dynamic CPU stat manipulation by an SA or script, we should only do
+    # a comparison if the CPU actually exists in *both* copies of the
+    # kstats.
+    next unless (exists($data[$gen]->{cpu}->{$cpu}) and
+                 exists($data[$gen ^ 1]->{cpu}->{$cpu}));
     $data_to_return->[$cpu] = {};
     $data_to_return->[$cpu]->{CPU} = $cpu;
     if (defined($data[$gen ^ 1])) {
