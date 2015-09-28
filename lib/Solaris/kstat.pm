@@ -56,7 +56,57 @@ Solaris::kstat - Interface to Solaris kstat
 
 =head1 NOTES ON IMPLEMENTATION
 
-This implementation is derived from the OpenSolaris/Illumos 
+This implementation is derived from the OpenSolaris/Illumos Sun::Solaris::Kstat
+implementation, which, like the one delivered with Solaris natively, had a few
+shortcomings in practice:
+
+* It's compiled 32-bit, whereas a large number of kstat values are 64-bit.  The
+conversion to floating point tends to lose accuracy.
+
+* There appears to be issues with memory leaks when trying to create more than
+one object of the module at a time.
+
+* The entire point of kstats is to have the last measurement, and the current
+measurement, for comparison.  If you cannot have 2 instances of the object, this
+makes such comparisons hard.
+
+* The useful tie magic has subtle drawbacks, liking making it impossible to clone
+(to get around the above issue) using Clone, Storable::dclone, or Data::Clone
+to create clone copies for comparison.
+
+Here is the internal structure of what the XS module builds when you create a
+Solaris::kstat instance:
+
+  $k = { # modules as keys
+         module1 => { # instances as keys
+                      instance1 => { # names as keys
+                                     name1 => { # This hashref has magic
+                                                stat1 => value1,hl
+                                                ...
+                                              },
+                                     ...
+                                   },
+                      ...
+                    },
+         ...
+       };
+
+The top 3 levels of the hashref maps to the module:instance:name tuple that
+kstat provides.  These top 3 levels are always created, regardless of whether
+you access them, as the kstat chain is initially read.  These top 3 hashrefs are
+"normal" in the sense that they're just plain Perl hashes.
+
+The 4th level/hashref of the data structure maps to the 'statistic' portion of
+the module:instance:name:statistic tuple of a kstat, and has 2 kinds of magic:
+
+* Extended or '~' magic, which contains the Kstatinfo_t structure the XS module
+defines, and which contains a pointer to the kstat_t
+
+* Tie or 'P' magic, which provides the tie implementation for this hashref
+alone.
+
+The upshot of all this is that only the 4th level hashref is special, and it's
+only populated if it's read.  Otherwise, it's just a blank placeholder.
 
 =head1 METHODS
 
@@ -80,6 +130,19 @@ the same kstat chain.
 
 Instead, use the deep-copy clone() function from the Clone module to make copies
 of the hashref recursively.
+
+=cut
+
+=head2 copy()
+
+This creates a pure perl hash (all magic is gone) of the kstat data actually
+read to this point in the Solaris::kstat object.  This has the benefit of making
+the copy efficient (rather than traversing the entire kstat chain every time),
+as well as not having to worry about the tie or extended magic attached to
+the object.
+
+These copies can then easily be used for kstat comparisons, which is the most
+common use case.
 
 =cut
 
