@@ -10,8 +10,6 @@ use Solaris::kstat;
 use Time::HiRes  qw( clock_nanosleep CLOCK_HIGHRES );
 use IO::Async::Loop;
 use Net::AMQP::RabbitMQ;
-use Clone qw( clone );
-use Storable qw( dclone );
 
 my $coder = JSON::MaybeXS->new->ascii;
 
@@ -76,37 +74,51 @@ my $fields = {
 
 my $k = Solaris::kstat->new();
 
+# Prime the kstat by reading the data we intend to use in this script.  In this
+# case, that's cpu:<all instances>:sys
+foreach my $instance ( keys %{$k->{cpu}} ) {
+  () = each %{$k->{cpu}->{$instance}->{sys}};
+}
+
 my $i = 0;
 my @data;
 my $gen  = 0;
 my $interval = 1_000_000_000;  # 1 sec in nsecs
 my $goal_ns  = $k->gethrtime + $interval;
 
-#while ($i++ < 300) {
+# Initialize the @data array
+$data[$gen ^ 1] = $k->copy();
+$k->update();
+$data[$gen]     = $k->copy();
+
 while (1) {
   my $start_ns = $k->gethrtime;
   $k->update();
   $gen = $gen ^ 1;
-  $data[$gen] = dclone( $k->{cpu} );
+  $data[$gen] = $k->copy();
   my $data_to_return = [];
 
-  foreach my $cpu (sort { $a <=> $b } keys %{$data[$gen]}) {
+  foreach my $cpu (sort { $a <=> $b } keys %{$data[$gen]->{cpu}}) {
     $data_to_return->[$cpu] = {};
     $data_to_return->[$cpu]->{CPU} = $cpu;
     if (defined($data[$gen ^ 1])) {
       foreach my $field ( qw(idl) ) {
         my ($name) = keys %{$fields->{$field}};
-        my ($stat) = $fields->{$field}->{$name};
+        my ($stat) = $fields->{$field}->{$name}->{value};
+        # Skip if snaptimes are identical - this may happen on the first
+        # pass through this loop
+        next if ($data[$gen]->{cpu}->{$cpu}->{$name}->{snaptime} ==
+                 $data[$gen ^ 1]->{cpu}->{$cpu}->{$name}->{snaptime});
         #say "kstat name: $name";
         #say "kstat stat info: " . Dumper( $stat );
         #say "OLD: " . $data[$gen]->{$cpu}->{$name}->{snaptime};
         #say "NEW: " . $data[$gen ^ 1]->{$cpu}->{$name}->{snaptime};
         my $time_pct =
-          (($data[$gen]->{$cpu}->{$name}->{$stat->{value}} -
-            $data[$gen ^ 1]->{$cpu}->{$name}->{$stat->{value}}
+          (($data[$gen]->{cpu}->{$cpu}->{$name}->{$stat} -
+            $data[$gen ^ 1]->{cpu}->{$cpu}->{$name}->{$stat}
            )   /
-            ( $data[$gen]->{$cpu}->{$name}->{snaptime} -
-              $data[$gen ^ 1]->{$cpu}->{$name}->{snaptime}
+            ( $data[$gen]->{cpu}->{$cpu}->{$name}->{snaptime} -
+              $data[$gen ^ 1]->{cpu}->{$cpu}->{$name}->{snaptime}
             )) * 100;
         my $rounded_pct = int($time_pct + 0.5);
         #say "CPU $cpu: $field " . sprintf("%3.0f%%", $rounded_pct);

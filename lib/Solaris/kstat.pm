@@ -15,6 +15,49 @@ XSLoader::load('Solaris::kstat', $VERSION);
 
 Solaris::kstat - Interface to Solaris kstat
 
+=head1 SYNOPSIS
+
+  ## Create the object
+  my $k = Solaris::kstat->new;
+
+  ## Prime the kstat to auto-collect cpu:<instances>:sys stats via the magic of
+  ## XS ties:
+  foreach my $instance ( keys %{$k->{cpu}} ) {
+    () = each %{$k->{cpu}->{$instance}->{sys}};
+  }
+
+  ## After the above, each call to $k->update will now only update the
+  ## cpu:<instances>:sys portion of the kstat chain into the hash.  You can use
+  ## the $k->copy() method to get a pure hash without any kind of magic, which
+  ## which to do comparisons:
+  my @kstat_history;
+  my $generation = 0;
+  $kstat_history[$generation] = $k->copy();
+
+  while (1) {
+    $k->update();
+    $generation = $generation ^ 1;
+    $kstat_history[$generation] = $k->copy();
+
+    foreach my $cpu (sort { $a <=> $b } keys %{$kstat_history[$generation]->{cpu}}) {
+      my $time_pct =
+        (($kstat_history[$generation]->{cpu}->{$cpu}->{sys}->{cpu_nsec_idle} -
+          $kstat_history[$generation ^ 1]->{cpu}->{$cpu}->{sys}->{cpu_nsec_idle}
+           )   /
+         ( $kstat_history[$generation]->{cpu}->{$cpu}->{sys}->{snaptime} -
+           $kstat_history[$generation ^ 1]->{cpu}->{$cpu}->{sys}->{snaptime}
+         )) * 100;
+      say "CPU: $cpu is $time_pct IDLE";
+    }
+    # Probably best to use nanosleep() to sleep for the remainder of the second
+    sleep(1);
+  }
+
+
+=head1 NOTES ON IMPLEMENTATION
+
+This implementation is derived from the OpenSolaris/Illumos 
+
 =head1 METHODS
 
 =head2 new()
