@@ -117,7 +117,7 @@ while (1) {
     $data_to_return->[$cpu] = {};
     $data_to_return->[$cpu]->{CPU} = $cpu;
     if (defined($data[$gen ^ 1])) {
-      foreach my $field ( qw(idl) ) {
+      foreach my $field ( qw(idl usr sys) ) {
         my ($name) = keys %{$fields->{$field}};
         my ($stat) = $fields->{$field}->{$name}->{value};
         # Skip if snaptimes are identical - this may happen on the first
