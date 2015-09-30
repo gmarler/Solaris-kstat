@@ -1,0 +1,200 @@
+#!/usr/bin/env perl
+
+use v5.18.1;
+use strict;
+use warnings;
+
+use Data::Dumper;
+use Solaris::kstat;
+use Time::HiRes  qw( clock_nanosleep CLOCK_HIGHRES );
+
+
+my $hostname = qx{/bin/uname -n};
+chomp($hostname);
+
+my $fields = {
+  #field => { name => { value => stat } },
+  #minf  => { vm => { value => [ 'as_fault', 'hat_fault' ], }, },
+  #mjf   => { vm => { value => 'maj_fault', }, },
+  xcal  => { sys => { value => 'xcalls', }, },
+  intr  => { sys => { value => 'intr',
+                      width => 5, },
+           },
+  ithr  => { sys => { value => 'intrthread', }, },
+  csw   => { sys => { value => 'pswitch',
+                      width => 4, },
+           },
+  icsw  => { sys => { value => 'inv_swtch', }, },
+  migr  => { sys => { value => 'cpumigrate', }, },
+  smtx  => { sys => { value => 'mutex_adenters', }, },
+  syscl => { sys => { value => 'syscall', }, },
+  usr   => { sys => { value => 'cpu_nsec_user',
+                      time  => 1, },
+           },
+  sys   => { sys => { value => 'cpu_nsec_kernel',
+                      time  => 1, },
+           },
+  idl   => { sys => { value => 'cpu_nsec_idle',
+                      time  => 1, },
+           },
+  # NOTE: This is a subset of sys / cpu_nsec_kernel
+  intr  => { sys => { value => 'cpu_nsec_intr',
+                      time  => 1, },
+           },
+};
+
+my $k = Solaris::kstat->new();
+
+my (%chip_ids, %pg_ids, %core_ids, $hier);
+
+#
+# FACT: chip_id is not equivalent to Locality Group ID
+# ASSUMPTION: But if you sort chip_id's numerically, they will map one to one
+#             with each Locality Group, starting with 1, and so on.
+#
+$hier = [];
+my ($chip_href, $core_href, $cpu_href,
+    $chip_aref, $core_aref, $cpu_aref,
+    $last_chip, $last_core);
+my $lg_id = 1;  # Start at 1
+# Have to sort CPU instance IDs, as there's no guarantee they'll be in order
+foreach my $instance ( sort { $a <=> $b } keys %{$k->{cpu_info}} ) {
+  # We can construct the 'name' portion of 'module:instance:name' without an
+  # extra loop
+  my $chip_id = $k->{cpu_info}->{$instance}->{'cpu_info' .  $instance}->{chip_id};
+  my $pg_id   = $k->{cpu_info}->{$instance}->{'cpu_info' .  $instance}->{pg_id};
+  my $core_id = $k->{cpu_info}->{$instance}->{'cpu_info' .  $instance}->{core_id};
+  my $cpu_id  = $k->{cpu_info}->{$instance}->{'cpu_info' .  $instance}->{device_ID};
+  if ((not defined($last_chip)) or ($last_chip != $chip_id)) {
+    $last_chip = $chip_id;
+    $chip_href = {};
+    my $cores_aref = [];
+    $chip_href->{chip_id} = $chip_id;
+    $chip_href->{LG}      = $lg_id++;   # Note that we increment this here
+    $chip_href->{cores}   = $cores_aref;
+    push @$hier, $chip_href;
+  }
+  if ((not defined($last_core)) or ($last_core != $core_id)) {
+    $last_core = $core_id;
+    $core_href = {};
+    my $cpus_aref = [];
+    $core_href->{core_id} = $core_id;
+    $core_href->{cpus}    = $cpus_aref;
+    push @{$chip_href->{cores}}, $core_href;
+  }
+  my $cpu_href = {};
+  $cpu_href->{cpu_id} = $cpu_id;
+  #$cpu_href->{stats}  = undef;
+  push @{$core_href->{cpus}}, $cpu_href;
+}
+
+#say Dumper( $hier );
+#say "CHIP IDs: " . Dumper( [ sort { $a <=> $b } keys %chip_ids ] );
+#say "CORE IDs: " . Dumper( [ sort { $a <=> $b } keys %core_ids ] );
+
+#exit;
+
+# Prime the kstat by reading the data we intend to use in this script.  In this
+# case, that's cpu:<all instances>:sys AND cpu_info:<all instances>:<all names>
+foreach my $instance ( keys %{$k->{cpu}} ) {
+  () = each %{$k->{cpu}->{$instance}->{sys}};
+}
+
+
+my $i = 0;
+my @data;
+my $gen  = 0;
+my $interval = 1_000_000_000;  # 1 sec in nsecs
+my $goal_ns  = $k->gethrtime + $interval;
+
+# Initialize the @data array
+$data[$gen ^ 1] = $k->copy();
+$k->update();
+$data[$gen]     = $k->copy();
+
+while (1) {
+  my $start_ns = $k->gethrtime;
+  $k->update();
+  $gen = $gen ^ 1;
+  $data[$gen] = $k->copy();
+  my $data_to_return = [];
+
+  if ( not arrays_identical( [ keys %{$data[$gen]->{cpu}} ],
+                             [ keys %{$data[$gen ^ 1]->{cpu}} ] ) ) {
+    # If this condition is true, there's been a change in the count of CPUs
+    # (cpus going offline, or offline/online - in this case, we need to reprime
+    # the $k data structure
+    foreach my $instance ( keys %{$k->{cpu}} ) {
+      () = each %{$k->{cpu}->{$instance}->{sys}};
+    }
+  }
+
+  foreach my $chip_data ( @$hier ) {
+    my $LG_id = $chip_data->{LG};
+    my $LG_href = { LG => $LG_id, cores => [] };
+    push @{$data_to_return}, $LG_href;
+    foreach my $core_data ( @{$chip_data->{cores}} ) {
+      my $core_id = $core_data->{core_id};
+      my $core_href = { core => $core_id, cpus => [] };
+      push @{$LG_href->{cores}}, $core_href;
+      foreach my $cpu_data ( @{$core_data->{cpus}} ) {
+        my $cpu_id = $cpu_data->{cpu_id};
+        my $cpu_href = { cpu => $cpu_id, stats => { } };
+        push @{$core_href->{cpus}}, $cpu_href;
+        # In the case where the # of CPUs has increased/decreased due to
+        # dynamic CPU stat manipulation by an SA or script, we should only do
+        # a comparison if the CPU actually exists in *both* copies of the
+        # kstats.
+        next unless (exists($data[$gen]->{cpu}->{$cpu_id}) and
+                     exists($data[$gen ^ 1]->{cpu}->{$cpu_id}));
+
+        if (defined($data[$gen ^ 1])) {
+          foreach my $field ( qw(idl sys usr) ) {
+            my ($name) = keys %{$fields->{$field}};
+            my ($stat) = $fields->{$field}->{$name}->{value};
+            # Skip if snaptimes are identical - this will always happen on the first
+            # pass through this loop
+            next if ($data[$gen]->{cpu}->{$cpu_id}->{$name}->{snaptime} ==
+                     $data[$gen ^ 1]->{cpu}->{$cpu_id}->{$name}->{snaptime});
+   
+            my $time_pct =
+              (($data[$gen]->{cpu}->{$cpu_id}->{$name}->{$stat} -
+                $data[$gen ^ 1]->{cpu}->{$cpu_id}->{$name}->{$stat}
+               )   /
+                ( $data[$gen]->{cpu}->{$cpu_id}->{$name}->{snaptime} -
+                  $data[$gen ^ 1]->{cpu}->{$cpu_id}->{$name}->{snaptime}
+                )) * 100;
+            my $rounded_pct = int($time_pct + 0.5);
+            $cpu_href->{stats}->{$field} = $rounded_pct;
+          }
+        }
+
+      }
+    }
+  }
+
+  #say encode_json( $data_to_return );
+  my $complete_ns = $k->gethrtime;
+  my $remaining_nsec_in_interval = $goal_ns - $complete_ns;
+  $goal_ns += $interval;
+  if ($remaining_nsec_in_interval > 1000) {
+    #say "nanosleeping for $remaining_nsec_in_interval nsecs";
+    clock_nanosleep( CLOCK_HIGHRES, $remaining_nsec_in_interval );
+  }
+  my $awakened = $k->gethrtime;
+  my $elapsed = $awakened - $start_ns;
+  say "ELAPSED: $elapsed nsecs";
+  say Dumper( $data_to_return );
+}
+
+sub arrays_identical {
+  my ($xref, $yref) = @_;
+
+  return unless @$xref == @$yref;
+
+  my $i;
+  for my $elem (@$xref) {
+    return unless $elem eq $yref->[$i++];
+  }
+  return 1;  # They're identical!
+}
