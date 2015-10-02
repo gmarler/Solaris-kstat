@@ -21,8 +21,8 @@ my $mq    = Net::AMQP::RabbitMQ->new();
 my $queue = "$hostname";
 
 $mq->connect(
-  # "nydevsol10.dev.bloomberg.com",
-  "localhost",
+  "nydevsol10.dev.bloomberg.com",
+  # "localhost",
   {
     user   => 'guest',
     pass   => 'guest',

@@ -4,10 +4,12 @@ use v5.18.1;
 use strict;
 use warnings;
 
+use JSON::MaybeXS;
 use Data::Dumper;
 use Solaris::kstat;
 use Time::HiRes  qw( clock_nanosleep CLOCK_HIGHRES );
 
+my $coder = JSON::MaybeXS->new->pretty->space_after(0)->space_before(0)->indent(0)->ascii;
 
 my $hostname = qx{/bin/uname -n};
 chomp($hostname);
@@ -188,7 +190,8 @@ while (1) {
   my $awakened = $k->gethrtime;
   my $elapsed = $awakened - $start_ns;
   say "ELAPSED: $elapsed nsecs";
-  say Dumper( $data_to_return );
+  # say Dumper( $data_to_return );
+  say $coder->encode( $data_to_return );
 }
 
 sub arrays_identical {
