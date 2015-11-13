@@ -90,3 +90,71 @@ acquire_cpus(struct snapshot *ss, kstat_ctl_t *kc)
 out:
   return (errno);
 }
+
+static int
+acquire_psets(struct snapshot *ss)
+{
+  psetid_t             *pids = NULL;
+  struct pset_snapshot *ps;
+  size_t                pids_nr;
+  size_t                i, j;
+
+  /*
+   * WARNING: Have to use pset_list twice, but between the two calls
+   *          pids_nr can change at will.
+   *          Delay the setting of s_nr_psets until we have the "final"
+   *          of pids_nr
+   */
+
+  if (pset_list(NULL, &pids_nr) < 0)
+    return (errno);
+
+  if ((pids = calloc(pids_nr, sizeof (psetid_t))) == NULL)
+    goto out;
+
+  if (pset_list(pids, &pids_nr) < 0)
+    goto out;
+
+  ss->s_psets = calloc(pids_nr + 1, sizeof (struct pset_snapshot));
+  if (ss->s_psets == NULL)
+    goto out;
+  ss->s_nr_psets = pids_nr + 1;
+
+  /* CPUs that are not in any pset */
+  ps = &ss->s_psets[0];
+  ps->ps_id = 0;
+  ps->ps_cpus = calloc(ss->s_nr_cpus, sizeof (struct cpu_snapshot *));
+  if (ps->ps_cpus == NULL)
+    goto out;
+
+  /* CPUs that are in a pset */
+  for (i = 1; i < ss->s_nr_psets; i++) {
+    ps = &ss->s_psets[i];
+
+    ps->ps_id = pids[i - 1];
+    ps->ps_cpus =
+      calloc(ss->s_nr_cpus, sizeof (struct cpu_snapshot *));
+    if (ps->ps_cpus == NULL)
+      goto out;
+  }
+
+  for (i = 0; i < ss->s_nr_psets; i++) {
+    ps = &ss->s_psets[i];
+
+    for (j = 0; j < ss->s_nr_cpus; j++) {
+      if (!CPU_ACTIVE(&ss->s_cpus[j]))
+        continue;
+      if (ss->s_cpus[j].cs_pset_id != ps->ps_id)
+        continue;
+
+      ps->ps_cpus[ps->ps_nr_cpus++] = &ss->s_cpus[j];
+    }
+  }
+
+  errno = 0;
+
+out:
+  free(pids);
+  return (errno);
+}
+
