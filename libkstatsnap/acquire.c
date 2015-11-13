@@ -158,3 +158,62 @@ out:
   return (errno);
 }
 
+static int
+acquire_intrs(struct snapshot *ss, kstat_ctl_t *kc)
+{
+  kstat_t       *ksp;
+  size_t         i = 0;
+  kstat_t       *sys_misc;
+  kstat_named_t *clock;
+
+  /* clock interrupt */
+  ss->s_nr_intrs = 1;
+
+  for (ksp = kc->kc_chain; ksp; ksp = ksp->ks_next){
+    if (ksp->ks_type == KSTAT_TYPE_INTR)
+      ss->s_nr_intrs++;
+  }
+
+  ss->intrs = calloc(s->s_nr_intrs, sizeof (struct intr_snapshot));
+  if (ss->s_intrs == NULL)
+    return (errno);
+
+  sys_misc = kstat_lookup_read(kc, "unix", 0, "system_misc");
+  if (sys_misc == NULL)
+    goto out;
+
+  clock = (kstat_named_t *)kstat_data_lookup(sys_misc, "clk_intr");
+  if (clock == NULL)
+    goto out;
+
+  (void) strlcpy(ss->s_intrs[0].is_name, "clock", KSTAT_STRLEN);
+  ss->s_intrs[0].is_total = clock->value.ui32;
+
+  i = 1;
+
+  for (ksp = kc->kc_chain; ksp; ksp = ksp->ks_next) {
+    kstat_intr_t *ki;
+    int           j;
+
+    if (ksp->ks_type != KSTAT_TYPE_INTR)
+      continue;
+    if (kstat_read(kc, ksp, NULL) == -1)
+      goto out;
+
+    ki = KSTAT_INTR_PTR(ksp);
+
+    (void) strlcpy(ss->s_intrs[i].is_name, ksp->ks_name, KSTAT_STRLEN);
+    ss->s_intrs[i].is_total = 0;
+
+    for (j = 0; j < KSTAT_NUM_INTRS; j++)
+      ss->s_intrs[i].is_total += ki->intrs[j];
+
+    i++;
+  }
+
+  errno = 0;
+out:
+  return (errno);
+}
+
+
