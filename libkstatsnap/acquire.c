@@ -273,3 +273,88 @@ acquire_sys(struct snapshot *ss, kstat_ctl_t *kc)
 
   return (0);
 }
+
+struct snapshot *
+acquire_snapshot(kstat_ctl_t *kc, int types)
+{
+  struct snapshot *ss = NULL;
+  int              err;
+
+retry:
+  err = 0;
+  /* Make sure any partial resources are freed on a retry */
+  free_snapshot(ss);
+
+  ss = safe_alloc(sizeof (struct snapshot));
+
+  (void) memset(ss, 0, sizeof (struct snapshot));
+
+  ss->s_types = types;
+
+  /* Wait for a possibly up to date chain */
+  while (kstat_chain_update(kc) == -1) {
+    if (errno == EAGAIN)
+      /* TODO: replace with nanosleep */
+      (void) poll(NULL, 0, RETRY_DELAY);
+    else
+      fail(1, "kstat_chain_update failed");
+  }
+
+  if (!err && (types & SNAP_INTERRUPTS))
+    err = acquire_intrs(ss, kc);
+
+  if (!err && (types & (SNAP_CPUS | SNAP_SYSTEM | SNAP_PSETS)))
+    err = acquire_cpus(ss, kc);
+
+  if (!err && (types & SNAP_PSETS))
+    err = acquire_psets(ss);
+
+  if (!err && (types & SNAP_SYSTEM))
+    err = acquire_sys(ss, kc);
+
+  switch (err) {
+    case 0:
+      break;
+    case EAGAIN:
+      /* TODO: Replace with nanosleep */
+      (void) poll(NULL, 0, RETRY_DELAY);
+    /* A kstat disappeared out from under us */
+    /* FALLTHROUGH */
+    case ENXIO:
+    case ENOENT:
+      goto retry;
+    default:
+      fail(1, "acquiring snapshot failed");
+  }
+
+  return (ss);
+}
+
+void
+free_snapshot(struct snapshot *ss)
+{
+  size_t i;
+
+  if (ss == NULL)
+    return;
+
+  while (ss->s_cpus) {
+    for (i = 0; i < ss->s_nr_cpus; i++) {
+      free(ss->s_cpus[i].cs_vm.ks_data);
+      free(ss->s_cpus[i].cs_sys.ks_data);
+    }
+    free(ss->s_cpus);
+  }
+
+  if (ss->s_psets) {
+    for (i = 0; i < ss->s_nr_psets; i++)
+      free(ss->s_psets[i].ps_cpus);
+    free(ss->s_psets);
+  }
+
+  free(ss->s_sys.ss_agg_sys.ks_data);
+  free(ss->s_sys.ss_agg_vm.ks_data);
+  free(ss);
+}
+
+
