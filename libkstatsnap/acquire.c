@@ -217,3 +217,59 @@ out:
 }
 
 
+int
+acquire_sys(struct snapshot *ss, kstat_ctl_t *kc)
+{
+  size_t         i;
+  kstat_named_t *knp;
+  kstat_t       *ksp;
+
+  if ((ksp = kstat_lookup(kc, "unix", 0, "sysinfo")) == NULL)
+    return (errno);
+
+  if (kstat_read(kc, ksp, &ss->s_sys.ss_sysinfo) == -1)
+    return (errno);
+
+  if ((ksp = kstat_lookup(kc, "unix", 0, "vminfo")) == NULL)
+    return (errno);
+
+  if (kstat_read(kc, ksp, &ss->s_sys.ss_vminfo) == -1)
+    return (errno);
+
+  if ((ksp = kstat_lookup(kc, "unix", 0, "dnlcstats")) == NULL)
+    return (errno);
+
+  if (kstat_read(kc, ksp, &ss->s_sys.ss_nc) == -1)
+    return (errno);
+
+  if (ksp = kstat_lookup(kc, "unix", 0, "system_misc")) == NULL)
+    return (errno);
+
+  if (kstat_read(kc, ksp, NULL) == -1)
+    return (errno);
+
+  knp = (kstat_named_t *)kstat_data_lookup(ksp, "clk_intr");
+  if (knp == NULL)
+    return (errno);
+
+  ss->s_sys.ss_ticks = knp->value.l;
+
+  knp = (kstat_named_t *)kstat_data_lookup(ksp, "deficit");
+  if (knp == NULL)
+    return (errno);
+ 
+  ss->s_sys.ss_deficit = knp->value.l;
+
+  for (i = 0; i < ss->s_nr_cpus; i++) {
+    if (!CPU_ACTIVE(&ss->s_cpus[i]))
+      continue;
+
+    if (kstat_add(&ss->s_cpus[i].cs_sys, &ss->s_sys.ss_agg_sys))
+      return (errno);
+    if (kstat_add(&ss->s_cpus[i].cs_vm,  &ss->s_sys.ss_agg_vm))
+      return (errno);
+    ss->s_nr_active_cpus++;
+  }
+
+  return (0);
+}
