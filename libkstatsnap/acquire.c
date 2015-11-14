@@ -11,9 +11,11 @@
 
 /*
  * How long we delay before retrying after an allocation failure,
- * in units of milleseconds
+ * in units of nanoseconds (200 milliseconds)
  */
-#define RETRY_DELAY 200
+#define RETRY_DELAY 200000000
+
+static struct timespec retry_delay = { 0, RETRY_DELAY };
 
 static char *cpu_states[] = {
   "cpu_ticks_idle",
@@ -294,8 +296,7 @@ retry:
   /* Wait for a possibly up to date chain */
   while (kstat_chain_update(kc) == -1) {
     if (errno == EAGAIN)
-      /* TODO: replace with nanosleep */
-      (void) poll(NULL, 0, RETRY_DELAY);
+      nanosleep( &retry_delay, NULL );
     else
       fail(1, "kstat_chain_update failed");
   }
@@ -316,8 +317,7 @@ retry:
     case 0:
       break;
     case EAGAIN:
-      /* TODO: Replace with nanosleep */
-      (void) poll(NULL, 0, RETRY_DELAY);
+      nanosleep( &retry_delay, NULL );
     /* A kstat disappeared out from under us */
     /* FALLTHROUGH */
     case ENXIO:
@@ -357,4 +357,17 @@ free_snapshot(struct snapshot *ss)
   free(ss);
 }
 
+kstat_ctl_t *
+open_kstat(void)
+{
+  kstat_ctl_t *kc;
 
+  while ((kc = kstat_open()) == NULL) {
+    if (errno == EAGAIN)
+      nanosleep( &retry_delay, NULL );
+    else
+      fail(1, "kstat_open failed");
+  }
+
+  return (kc);
+}
