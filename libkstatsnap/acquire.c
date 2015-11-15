@@ -414,4 +414,70 @@ kstat_delta(kstat_t *old, kstat_t *new, char *name)
   return (knew->value.ui64);
 }
 
+int
+kstat_copy(const kstat_t *src, kstat_t *dst)
+{
+  *dst = *src;
+
+  if (src->ks_data != NULL) {
+    if ((dst->ks_data = malloc(src->ks_data_size)) == NULL)
+      return (-1);
+    bcopy(src->ks_data, dst->ks_data, src->ks_data_size);
+  } else {
+    dst->ks_data = NULL;
+    dst->ks_data_size = 0;
+  }
+  return (0);
+}
+
+int
+kstat_add(const kstat_t *src, kstat_t *dst)
+{
+  size_t          i;
+  kstat_named_t  *from;
+  kstat_named_t  *to;
+
+  if (dst->ks_data == NULL)
+    return (kstat_copy(src, dst));
+
+  from = src->ks_data;
+  to   = dst->ks_data;
+
+  for (i = 0; i < src->ks_ndata; i++) {
+    /* "Addition" is meaningless for strings */
+    if (from->data_type != KSTAT_DATA_CHAR &&
+        from->data_type != KSTAT_DATA_STRING)
+      (to)->value.ui64 += (from)->value.ui64;
+    from++
+    to++;
+  }
+
+  return (0);
+}
+
+uint64_t
+cpu_ticks_delta(kstat_t *old, kstat_t *new)
+{
+  uint64_t ticks = 0;
+  size_t   i;
+
+  for (i = 0; i < ARRAY_SIZE(cpu_states); i++)
+    ticks += kstat_delta(old, new, cpu_states[i]);
+  return (ticks);
+}
+
+int
+nr_active_cpus(struct snapshot *ss)
+{
+  size_t i;
+  int    count = 0;
+
+  for (i = 0; i < ss->s_nr_cpus; i++) {
+    if (CPU_ACTIVE(&ss->s_cpus[i]))
+      count++;
+  }
+
+  return (count);
+}
+
 
