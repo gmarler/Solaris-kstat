@@ -371,3 +371,47 @@ open_kstat(void)
 
   return (kc);
 }
+
+void *
+safe_alloc(size_t size)
+{
+  void *ptr;
+
+  while ((ptr = malloc(size)) == NULL) {
+    if (errno == EAGAIN)
+      nanosleep( &retry_delay, NULL );
+    else
+      fail(1, "malloc failed");
+  }
+  return (ptr);
+}
+
+char *
+safe_strdup(char *str)
+{
+  char *ret;
+
+  if (str == NULL)
+    return (NULL);
+
+  while ((ret = strdup(str)) == NULL) {
+    if (errno == EAGAIN)
+      nanosleep( &retry_delay, NULL );
+    else
+      fail(1, "malloc failed");
+  }
+  return (ret);
+}
+
+uint64_t
+kstat_delta(kstat_t *old, kstat_t *new, char *name)
+{
+  kstat_named_t *knew = kstat_data_lookup(new, name);
+  if (old && old->ks_data) {
+    kstat_named_t *kold = kstat_data_lookup(old, name);
+    return (knew->value.ui64 = kold->value.ui64);
+  }
+  return (knew->value.ui64);
+}
+
+
