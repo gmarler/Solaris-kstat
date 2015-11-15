@@ -480,4 +480,54 @@ nr_active_cpus(struct snapshot *ss)
   return (count);
 }
 
+/*
+ * Return the number of ticks delta between two hrtime_t values.
+ * Handle overflow possibilities in hrtime_t, regardless of how improbable
+ * those possibilities may be.
+ */
+uint64_t
+hrtime_delta(hrtime_t old, hrtime_t new)
+{
+  uint64_t del;
+
+  if ((new >= old) && (old >= 0L))
+    return (new - old);
+  else {
+    /* The positive portion of an hrtime_t has been overflowed. */
+    if (new < 0L) {
+      /*
+       * The new value is negative. Handle the case where the old value
+       * is positive or negative.
+       */
+      uint64_t n1;
+      uint64_t o1;
+
+      n1 = -new;
+      if (old > 0L)
+        return (n1 - old);
+      else {
+        o1 = -old;
+        del = n1 - o1;
+        return (del);
+      }
+    } else {
+      /*
+       * Either we've just gone from being negative to positive *OR* the last
+       * entry was positive and the new entry is also positive but *LESS* than
+       * the old entry.  This implies we waited quite a few days on a very
+       * fast system between output generation.
+       */
+      if (old < 0L) {
+        uint64_t o2;
+
+        o2 = -old;
+        del = UINT64_MAX - o2;
+      } else {
+        del = UINT64_MAX - old;
+      }
+      del += new;
+      return (del);
+    }
+  }
+}
 
