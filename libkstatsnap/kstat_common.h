@@ -68,7 +68,7 @@ struct intr_snapshot {
 struct sys_snapshot {
   sysinfo_t             ss_sysinfo;
   vminfo_t              vm_sysinfo;
-  struct ncstats        ss_nc;
+  struct nc_stats       ss_nc;
   /* vm/sys states aggregated across all CPUs */
   kstat_t               ss_agg_vm;
   kstat_t               ss_agg_sys;
