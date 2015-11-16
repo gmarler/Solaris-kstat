@@ -244,7 +244,7 @@ acquire_sys(struct snapshot *ss, kstat_ctl_t *kc)
   if (kstat_read(kc, ksp, &ss->s_sys.ss_nc) == -1)
     return (errno);
 
-  if (ksp = kstat_lookup(kc, "unix", 0, "system_misc")) == NULL)
+  if ((ksp = kstat_lookup(kc, "unix", 0, "system_misc")) == NULL)
     return (errno);
 
   if (kstat_read(kc, ksp, NULL) == -1)
@@ -448,7 +448,7 @@ kstat_add(const kstat_t *src, kstat_t *dst)
     if (from->data_type != KSTAT_DATA_CHAR &&
         from->data_type != KSTAT_DATA_STRING)
       (to)->value.ui64 += (from)->value.ui64;
-    from++
+    from++;
     to++;
   }
 
