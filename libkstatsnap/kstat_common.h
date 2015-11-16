@@ -92,7 +92,7 @@ struct snapshot {
   struct intr_snapshot *s_intrs;
   struct sys_snapshot   s_sys;
   size_t                s_nr_active_cpus;
-}
+};
 
 /* print a message and exit with failure */
 void fail(int do_perror, char *message, ...);
