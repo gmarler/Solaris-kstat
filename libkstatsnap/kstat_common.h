@@ -11,10 +11,12 @@ extern "C" {
 #include <stdio.h>
 #include <kstat.h>
 #include <sys/types.h>
+#include <sys/buf.h>
 #include <sys/dnlc.h>
 #include <sys/sysinfo.h>
 #include <sys/processor.h>
 #include <sys/pset.h>
+#include <sys/avl.h>
 
 
 /* There is no CPU at this CPU location */
