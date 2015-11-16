@@ -78,7 +78,7 @@ struct sys_snapshot {
   /* ticks since boot */
   ulong_t               ss_ticks;
   long                  ss_deficit;
-}
+};
 
 /* The primary structure of a system snapshot. */
 struct snapshot {
