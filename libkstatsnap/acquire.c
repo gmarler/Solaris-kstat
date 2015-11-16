@@ -108,13 +108,13 @@ acquire_psets(struct snapshot *ss)
    *          of pids_nr
    */
 
-  if (pset_list(NULL, &pids_nr) < 0)
+  if (pset_list(NULL, (uint_t *)&pids_nr) < 0)
     return (errno);
 
   if ((pids = calloc(pids_nr, sizeof (psetid_t))) == NULL)
     goto out;
 
-  if (pset_list(pids, &pids_nr) < 0)
+  if (pset_list(pids,(uint_t *)&pids_nr) < 0)
     goto out;
 
   ss->s_psets = calloc(pids_nr + 1, sizeof (struct pset_snapshot));
