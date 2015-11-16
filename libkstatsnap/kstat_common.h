@@ -11,6 +11,7 @@ extern "C" {
 #include <stdio.h>
 #include <kstat.h>
 #include <sys/types.h>
+#include <sys/dnlc.h>
 #include <sys/sysinfo.h>
 #include <sys/processor.h>
 #include <sys/pset.h>
