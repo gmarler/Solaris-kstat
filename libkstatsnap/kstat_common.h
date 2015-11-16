@@ -1,8 +1,9 @@
 
 /* Functions to create and compare kstat snapshots */
+#ifndef _KSTAT_COMMON_H
 #define _KSTAT_COMMON_H
 
-#ifdef _cplusplus
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -27,13 +28,13 @@ extern "C" {
 
 enum snapshot_types {
   /* All CPUs, independently */
-  SNAP_CPUS                  =   1 << 0;
+  SNAP_CPUS                  =   1 << 0,
   /* Aggregated Processor Sets */
-  SNAP_PSETS                 =   1 << 1;
+  SNAP_PSETS                 =   1 << 1,
   /* System Wide kstats, including aggregated CPU kstats */
-  SNAP_SYSTEM                =   1 << 2;
+  SNAP_SYSTEM                =   1 << 2,
   /* Interrupt sources and counts */
-  SNAP_INTERRUPTS            =   1 << 3;
+  SNAP_INTERRUPTS            =   1 << 3,
 };
 
 struct cpu_snapshot {
@@ -176,7 +177,7 @@ void cont_handler(int sig_number);
 
  
 
-#ifdef _cplusplus
+#ifdef __cplusplus
 }
 #endif
 
