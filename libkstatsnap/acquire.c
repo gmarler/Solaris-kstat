@@ -176,7 +176,7 @@ acquire_intrs(struct snapshot *ss, kstat_ctl_t *kc)
       ss->s_nr_intrs++;
   }
 
-  ss->s_intrs = calloc(s->s_nr_intrs, sizeof (struct intr_snapshot));
+  ss->s_intrs = calloc(ss->s_nr_intrs, sizeof (struct intr_snapshot));
   if (ss->s_intrs == NULL)
     return (errno);
 
