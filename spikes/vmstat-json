@@ -1,0 +1,30 @@
+#!/usr/bin/env perl
+
+use v5.18.1;
+use strict;
+use warnings;
+
+use JSON::MaybeXS;
+use Data::Dumper;
+use Solaris::kstat;
+use Time::HiRes          qw( clock_nanosleep CLOCK_HIGHRES );
+use DateTime::TimeZone   qw();
+use Solaris::Sysconf     qw(_SC_PAGESIZE _SC_CLK_TCK);
+
+my $tz = DateTime::TimeZone->new( name => 'local' );
+
+say "TZ: " . $tz->name;
+
+my $coder = JSON::MaybeXS->new->ascii;
+
+my $hostname = qx{/bin/uname -n};
+chomp($hostname);
+
+my $pagesize = Solaris::Sysconf::sysconf(_SC_PAGESIZE);
+my $hz       = Solaris::Sysconf::sysconf(_SC_CLK_TCK);
+
+say "PAGESIZE: $pagesize";
+say "HZ:       $hz";
+
+
+
