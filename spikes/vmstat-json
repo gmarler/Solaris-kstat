@@ -27,4 +27,17 @@ say "PAGESIZE: $pagesize";
 say "HZ:       $hz";
 
 
+#
+# SIDE EFFECT: uses global $pagesize
+#
+sub pgtok
+{
+  my ($a) = shift;
+  return $a * ($pagesize >> 10);
+}
 
+sub denom
+{
+  my ($x) = shift;
+  return defined($x) ? $x : 1;
+}
