@@ -52,15 +52,17 @@ foreach my $instance ( keys %{$k->{cpu}} ) {
 
 my ($old_k, $new_k) = (undef, undef);
 
+my ($start_n)  = $k->gethrtime();
+my ($period_n) = 1 * 1_000_000_000;  # 1 sec in nanosecs
+
 while (1) {
+  $start_n = sleep_until($start_n, $period_n, 1, undef);
+
   $old_k = $new_k;
   $k->update();
   $new_k = $k->copy();
 
   dovmstats($old_k, $new_k);
-
-  sleep(1);
-  #clock_nanosleep( CLOCK_HIGHRES, 500_000_000 );
 }
 
 sub dovmstats {
@@ -77,23 +79,23 @@ sub dovmstats {
   $new_vm_agg  = extract_vm_agg($new_k);
 
   $etime = cpu_ticks_delta($old_sys_agg, $new_sys_agg);
-  say "ETIME: $etime";
+  #say "ETIME: $etime";
   $percent_factor = 100.0 / denom($etime);
-  say "PERCENT FACTOR: $percent_factor";
+  #say "PERCENT FACTOR: $percent_factor";
 
   $etime = ($etime >= 1.0)                        ?
            (($etime / nr_active_cpus($new_k)) / $hz) : 1.0;
-  say "UPDATED ETIME: $etime";
+  #say "UPDATED ETIME: $etime";
   $sys_updates = denom(DELTA($old_k,$new_k,"sysinfo","updates"));
   $vm_updates  = denom(DELTA($old_k,$new_k,"vminfo","updates"));
-  say "SYS UPDATES: $sys_updates";
-  say "VM  UPDATES: $vm_updates";
+  #say "SYS UPDATES: $sys_updates";
+  #say "VM  UPDATES: $vm_updates";
 
-  my $ofm = defined($old_k) ? $old_k->{unix}{0}{vminfo}{freemem} : "NONE";
-  say "OLD FREEMEM:   " . $ofm;
-  say "NEW FREEMEM:   " . $new_k->{unix}{0}{vminfo}{freemem};
-  say "FREEMEM DELTA: " . DELTA($old_k,$new_k,"vminfo","freemem");
-  say "FREEMEM pgtok: " . pgtok(int((DELTA($old_k,$new_k,"vminfo","freemem") / $vm_updates)));
+  #my $ofm = defined($old_k) ? $old_k->{unix}{0}{vminfo}{freemem} : "NONE";
+  #say "OLD FREEMEM:   " . $ofm;
+  #say "NEW FREEMEM:   " . $new_k->{unix}{0}{vminfo}{freemem};
+  #say "FREEMEM DELTA: " . DELTA($old_k,$new_k,"vminfo","freemem");
+  #say "FREEMEM pgtok: " . pgtok(int((DELTA($old_k,$new_k,"vminfo","freemem") / $vm_updates)));
   my $freemem = pgtok(int((DELTA($old_k,$new_k,"vminfo","freemem") / $vm_updates)));
   say "FREEMEM: $freemem";
   my $sr = int(kstat_delta($old_vm_agg, $new_vm_agg, "scan") / $etime);
@@ -191,4 +193,47 @@ sub denom
   my ($x) = shift;
   # NOTE: Defined and not 0
   return $x ? $x : 1;
+}
+
+# SIDE EFFECT: Uses global $k
+sub sleep_until {
+  my ($wakeup, $interval, $forever, $null) = @_;
+  my ($now, $pause, $pause_left);
+
+  $now   = $k->gethrtime();
+  $pause = $wakeup + $interval - $now;
+
+  if ($pause <= 0 || ($pause < ($interval / 4))) {
+    if ($forever) {
+      $wakeup = $now + $interval;
+      $pause = $interval;
+    } else {
+      $pause = $interval / 2;
+      $wakeup += $interval;
+    }
+  } else {
+    $wakeup += $interval;
+  }
+
+  if ($pause < 1000) {
+    return $wakeup;  # close enough
+  }
+
+  # Do the actual sleep
+  $pause_left = $pause;
+  my $secs_slept;
+  do {
+    #say "GOING TO SLEEP FOR $pause_left ns";
+    $secs_slept = clock_nanosleep( CLOCK_HIGHRES, $pause_left );
+    #say "secs_slept after nanosleep: $secs_slept";
+    if (! defined($secs_slept) ) {
+      say "ERROR in clock_nanosleep";
+      return $wakeup;
+    }
+    $pause_left -= $secs_slept;
+    if ($pause_left < 1000) {
+      return $wakeup; # close enough
+    }
+  } while ($pause_left > 0);
+  return $wakeup;
 }
