@@ -35,11 +35,11 @@ my $k = Solaris::kstat->new();
 
 # Prime the kstat by reading the data we intend to use in this script.  In this
 # case, that's cpu:<all instances>:sys
-#() = each %{$k->{unix}->{0}->{sysinfo}};
-#() = each %{$k->{unix}->{0}->{vminfo}};
-#() = each %{$k->{unix}->{0}->{dnlcstats}};
+() = each %{$k->{unix}->{0}->{sysinfo}};
+() = each %{$k->{unix}->{0}->{vminfo}};
+() = each %{$k->{unix}->{0}->{dnlcstats}};
 () = each %{$k->{unix}->{0}->{system_misc}};
-say Dumper ( $k->{unix}->{0}->{system_misc} ); exit;
+
 foreach my $instance ( keys %{$k->{cpu_info}} ) {
   my $name = "cpu_info" . $instance;
   () = each %{$k->{cpu_info}->{$instance}->{$name}};
@@ -59,18 +59,22 @@ while (1) {
 
   dovmstats($old_k, $new_k);
 
-  #sleep(1);
-  clock_nanosleep( CLOCK_HIGHRES, 500_000_000 );
+  sleep(1);
+  #clock_nanosleep( CLOCK_HIGHRES, 500_000_000 );
 }
 
 sub dovmstats {
   my ($old_k, $new_k) = @_;
-  my ($old_sys_agg, $new_sys_agg, $etime, $percent_factor, $sys_updates, $vm_updates);
+  my ($old_sys_agg, $new_sys_agg,
+      $old_vm_agg,  $new_vm_agg,
+      $etime, $percent_factor, $sys_updates, $vm_updates);
 
   if ($old_k) {
     $old_sys_agg = extract_sys_agg($old_k);
+    $old_vm_agg  = extract_vm_agg($old_k);
   }
   $new_sys_agg = extract_sys_agg($new_k);
+  $new_vm_agg  = extract_vm_agg($new_k);
 
   $etime = cpu_ticks_delta($old_sys_agg, $new_sys_agg);
   say "ETIME: $etime";
@@ -80,10 +84,31 @@ sub dovmstats {
   $etime = ($etime >= 1.0)                        ?
            (($etime / nr_active_cpus($new_k)) / $hz) : 1.0;
   say "UPDATED ETIME: $etime";
+  $sys_updates = denom(DELTA($old_k,$new_k,"sysinfo","updates"));
+  $vm_updates  = denom(DELTA($old_k,$new_k,"vminfo","updates"));
+  say "SYS UPDATES: $sys_updates";
+  say "VM  UPDATES: $vm_updates";
+
+  my $ofm = defined($old_k) ? $old_k->{unix}{0}{vminfo}{freemem} : "NONE";
+  say "OLD FREEMEM:   " . $ofm;
+  say "NEW FREEMEM:   " . $new_k->{unix}{0}{vminfo}{freemem};
+  say "FREEMEM DELTA: " . DELTA($old_k,$new_k,"vminfo","freemem");
+  say "FREEMEM pgtok: " . pgtok(int((DELTA($old_k,$new_k,"vminfo","freemem") / $vm_updates)));
+  my $freemem = pgtok(int((DELTA($old_k,$new_k,"vminfo","freemem") / $vm_updates)));
+  say "FREEMEM: $freemem";
+  my $sr = int(kstat_delta($old_vm_agg, $new_vm_agg, "scan") / $etime);
+  say "SCAN RATE: $sr";
 }
 
 
+sub DELTA {
+  my ($old_k, $new_k, $name, $key) = @_;
 
+  my $oldval = $old_k ? $old_k->{unix}{0}{$name}{$key} : 0;
+  return $new_k->{unix}{0}{$name}{$key} - $oldval;
+}
+
+# TODO: REFACTOR following two into extract_agg($k, "cpu_agg_name")
 sub extract_sys_agg {
   my ($k) = @_;
   my ($sys_agg) = {};
@@ -97,6 +122,21 @@ sub extract_sys_agg {
     }
   }
   return $sys_agg;
+}
+
+sub extract_vm_agg {
+  my ($k) = @_;
+  my ($vm_agg) = {};
+
+  # Create aggregated sys info
+  foreach my $instance ( keys %{$k->{cpu}} ) {
+    foreach my $key ( keys %{$k->{cpu}->{$instance}->{vm}} ) {
+      # Skip non-numeric values
+      next if ($k->{cpu}->{$instance}->{vm}->{$key} =~ m/\D/);
+      $vm_agg->{$key} += $k->{cpu}->{$instance}->{vm}->{$key};
+    }
+  }
+  return $vm_agg;
 }
 
 
@@ -149,5 +189,6 @@ sub pgtok
 sub denom
 {
   my ($x) = shift;
-  return defined($x) ? $x : 1;
+  # NOTE: Defined and not 0
+  return $x ? $x : 1;
 }
