@@ -20,12 +20,86 @@ my $coder = JSON::MaybeXS->new->ascii;
 my $hostname = qx{/bin/uname -n};
 chomp($hostname);
 
+my @cpu_states = qw( cpu_ticks_idle
+                     cpu_ticks_kernel
+                     cpu_ticks_user
+                    );
+
 my $pagesize = Solaris::Sysconf::sysconf(_SC_PAGESIZE);
 my $hz       = Solaris::Sysconf::sysconf(_SC_CLK_TCK);
 
 say "PAGESIZE: $pagesize";
 say "HZ:       $hz";
 
+#
+# At this point, we prime the kstat hash with initial values, then wait a
+# second, then continues on.
+#
+my $k = Solaris::kstat->new();
+
+# Prime the kstat by reading the data we intend to use in this script.  In this
+# case, that's cpu:<all instances>:sys
+foreach my $instance ( keys %{$k->{cpu_info}} ) {
+  my $name = "cpu_info" . $instance;
+  () = each %{$k->{cpu_info}->{$instance}->{$name}};
+}
+foreach my $instance ( keys %{$k->{cpu}} ) {
+  () = each %{$k->{cpu}->{$instance}->{sys}};
+  () = each %{$k->{cpu}->{$instance}->{vm}};
+}
+
+nr_active_cpus($k);
+
+my ($oldsys, $newsys);
+
+$newsys = {};
+
+# Create aggregated sys info
+foreach my $instance ( keys %{$k->{cpu}} ) {
+  foreach my $key ( keys %{$k->{cpu}->{$instance}->{sys}} ) {
+    next if ($key eq 'class');  # Skip this key always
+    $newsys->{$key} += $k->{cpu}->{$instance}->{sys}->{$key};
+  }
+}
+
+say cpu_ticks_delta( undef, $newsys );
+
+sub cpu_ticks_delta {
+  my ($old_kstat, $new_kstat) = @_;
+  my ($ticks) = 0;
+
+  foreach my $state (@cpu_states) {
+    $ticks += kstat_delta($old_kstat, $new_kstat, $state);
+  }
+  return $ticks;
+}
+
+sub kstat_delta {
+  my ($old, $new, $name) = @_;
+
+  if ($old && (exists($old->{$name}))) {
+    return $new->{$name} - $old->{$name};
+  }
+  return $new->{$name};
+}
+
+sub nr_active_cpus {
+  my ($snapshot) = @_;
+  my ($count)    = 0;
+  # Iterate over cpu_info:instance:state, looking for those that are active
+  # and returning the count
+  foreach my $cpu ( keys %{$snapshot->{cpu_info}} ) {
+    my $name = "cpu_info" . $cpu;
+
+    if ($snapshot->{cpu_info}->{$cpu}->{$name}->{'state'} =~
+         /^(?:on\-line|no\-intr)/)
+    {
+      $count++;
+    }
+  }
+  say "CPUS ACTIVE: $count";
+  return $count;
+}
 
 #
 # SIDE EFFECT: uses global $pagesize
