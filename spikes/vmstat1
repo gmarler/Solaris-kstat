@@ -11,15 +11,38 @@ use Time::HiRes          qw( clock_nanosleep CLOCK_HIGHRES );
 use DateTime::TimeZone   qw();
 use DateTime             qw();
 use Solaris::Sysconf     qw(_SC_PAGESIZE _SC_CLK_TCK);
+use Net::AMQP::RabbitMQ;
+use IO::Async::Loop      qw();
 
-my $tz = DateTime::TimeZone->new( name => 'local' );
-
-say "TZ: " . $tz->name;
 
 my $coder = JSON::MaybeXS->new->ascii;
 
 my $hostname = qx{/bin/uname -n};
 chomp($hostname);
+
+my $loop = IO::Async::Loop->new;
+my $mq    = Net::AMQP::RabbitMQ->new();
+my $routing_key = "nydevsol10.vmstat";
+
+$mq->connect(
+  "nydevsol10.dev.bloomberg.com",
+  # "localhost",
+  {
+    user   => 'guest',
+    pass   => 'guest',
+  },
+);
+
+$mq->channel_open(1);
+
+$mq->exchange_declare(1, "topic_stat",
+  { exchange_type => 'topic', }
+);
+
+
+my $tz = DateTime::TimeZone->new( name => 'local' );
+
+say "TZ: " . $tz->name;
 
 my @cpu_states = qw( cpu_ticks_idle
                      cpu_ticks_kernel
@@ -70,7 +93,9 @@ sub dovmstats {
   my ($old_k, $new_k) = @_;
   my ($old_sys_agg, $new_sys_agg,
       $old_vm_agg,  $new_vm_agg,
-      $etime, $percent_factor, $sys_updates, $vm_updates);
+      $etime, $percent_factor,
+      $sys_updates, $vm_updates);
+  my ($outdata) = {};
 
   if ($old_k) {
     $old_sys_agg = extract_sys_agg($old_k);
@@ -92,7 +117,7 @@ sub dovmstats {
   #say "SYS UPDATES: $sys_updates";
   #say "VM  UPDATES: $vm_updates";
 
-  my $ts = DateTime->now( time_zone => 'UTC' )->epoch;
+  $outdata->{timestamp} = DateTime->now( time_zone => 'UTC' )->epoch;
 
   #my $ofm = defined($old_k) ? $old_k->{unix}{0}{vminfo}{freemem} : "NONE";
   #say "OLD FREEMEM:   " . $ofm;
@@ -100,9 +125,15 @@ sub dovmstats {
   #say "FREEMEM DELTA: " . DELTA($old_k,$new_k,"vminfo","freemem");
   #say "FREEMEM pgtok: " . pgtok(int((DELTA($old_k,$new_k,"vminfo","freemem") / $vm_updates)));
   my $freemem = pgtok(int((DELTA($old_k,$new_k,"vminfo","freemem") / $vm_updates)));
-  say "FREEMEM: $freemem";
+  $outdata->{freemem} = $freemem;
+  #say "FREEMEM: $freemem";
   my $sr = int(kstat_delta($old_vm_agg, $new_vm_agg, "scan") / $etime);
-  say "SCAN RATE: $sr";
+  #say "SCAN RATE: $sr";
+  $outdata->{scanrate} = $sr;
+
+  # say $coder->encode( $outdata );
+
+  $mq->publish(1, $routing_key, $coder->encode( $outdata ), { exchange => "topic_stat" } );
 }
 
 
@@ -178,7 +209,7 @@ sub nr_active_cpus {
       $count++;
     }
   }
-  say "CPUS ACTIVE: $count";
+  #say "CPUS ACTIVE: $count";
   return $count;
 }
 

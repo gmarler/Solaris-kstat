@@ -1,0 +1,52 @@
+#!/usr/bin/env perl
+
+use v5.18.1;
+use strict;
+use warnings;
+
+use JSON::MaybeXS;
+use Data::Dumper;
+use Net::AMQP::RabbitMQ;
+use IO::Async::Loop      qw();
+
+
+my $coder = JSON::MaybeXS->new->ascii;
+
+my $loop = IO::Async::Loop->new;
+my $mq    = Net::AMQP::RabbitMQ->new();
+#my $routing_key = 'nydevsol10.vmstat';
+my $routing_key = '#';
+
+$mq->connect(
+  "nydevsol10.dev.bloomberg.com",
+  # "localhost",
+  {
+    user   => 'guest',
+    pass   => 'guest',
+  },
+);
+
+$mq->channel_open(1);
+
+$mq->exchange_declare(1, "topic_stat",
+  { exchange_type => 'topic', }
+);
+
+my $queue_name = $mq->queue_declare(1, '',
+                                    { exclusive   => 1,
+                                      auto_delete => 1,
+                                    } );
+
+say "QUEUE NAME: $queue_name";
+
+$mq->queue_bind(1, $queue_name, "topic_stat", "#" );
+
+
+my $tag = $mq->consume(1, $queue_name );
+
+say "TAG: $tag";
+
+while (my $dhref = $mq->recv(10000)) {
+  say $dhref->{body};
+}
+
