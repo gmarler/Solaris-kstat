@@ -57,7 +57,8 @@ $newsys = {};
 # Create aggregated sys info
 foreach my $instance ( keys %{$k->{cpu}} ) {
   foreach my $key ( keys %{$k->{cpu}->{$instance}->{sys}} ) {
-    next if ($key eq 'class');  # Skip this key always
+    # Skip non-numeric values
+    next if ($k->{cpu}->{$instance}->{sys}->{$key} =~ m/\D/);
     $newsys->{$key} += $k->{cpu}->{$instance}->{sys}->{$key};
   }
 }
