@@ -9,6 +9,7 @@ use Data::Dumper;
 use Solaris::kstat;
 use Time::HiRes          qw( clock_nanosleep CLOCK_HIGHRES );
 use DateTime::TimeZone   qw();
+use DateTime             qw();
 use Solaris::Sysconf     qw(_SC_PAGESIZE _SC_CLK_TCK);
 
 my $tz = DateTime::TimeZone->new( name => 'local' );
@@ -90,6 +91,8 @@ sub dovmstats {
   $vm_updates  = denom(DELTA($old_k,$new_k,"vminfo","updates"));
   #say "SYS UPDATES: $sys_updates";
   #say "VM  UPDATES: $vm_updates";
+
+  my $ts = DateTime->now( time_zone => 'UTC' )->epoch;
 
   #my $ofm = defined($old_k) ? $old_k->{unix}{0}{vminfo}{freemem} : "NONE";
   #say "OLD FREEMEM:   " . $ofm;
