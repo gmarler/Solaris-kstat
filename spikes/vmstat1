@@ -1,0 +1,153 @@
+#!/usr/bin/env perl
+
+use v5.18.1;
+use strict;
+use warnings;
+
+use JSON::MaybeXS;
+use Data::Dumper;
+use Solaris::kstat;
+use Time::HiRes          qw( clock_nanosleep CLOCK_HIGHRES );
+use DateTime::TimeZone   qw();
+use Solaris::Sysconf     qw(_SC_PAGESIZE _SC_CLK_TCK);
+
+my $tz = DateTime::TimeZone->new( name => 'local' );
+
+say "TZ: " . $tz->name;
+
+my $coder = JSON::MaybeXS->new->ascii;
+
+my $hostname = qx{/bin/uname -n};
+chomp($hostname);
+
+my @cpu_states = qw( cpu_ticks_idle
+                     cpu_ticks_kernel
+                     cpu_ticks_user
+                    );
+
+my $pagesize = Solaris::Sysconf::sysconf(_SC_PAGESIZE);
+my $hz       = Solaris::Sysconf::sysconf(_SC_CLK_TCK);
+
+say "PAGESIZE: $pagesize";
+say "HZ:       $hz";
+
+my $k = Solaris::kstat->new();
+
+# Prime the kstat by reading the data we intend to use in this script.  In this
+# case, that's cpu:<all instances>:sys
+#() = each %{$k->{unix}->{0}->{sysinfo}};
+#() = each %{$k->{unix}->{0}->{vminfo}};
+#() = each %{$k->{unix}->{0}->{dnlcstats}};
+() = each %{$k->{unix}->{0}->{system_misc}};
+say Dumper ( $k->{unix}->{0}->{system_misc} ); exit;
+foreach my $instance ( keys %{$k->{cpu_info}} ) {
+  my $name = "cpu_info" . $instance;
+  () = each %{$k->{cpu_info}->{$instance}->{$name}};
+}
+foreach my $instance ( keys %{$k->{cpu}} ) {
+  () = each %{$k->{cpu}->{$instance}->{sys}};
+  () = each %{$k->{cpu}->{$instance}->{vm}};
+}
+
+
+my ($old_k, $new_k) = (undef, undef);
+
+while (1) {
+  $old_k = $new_k;
+  $k->update();
+  $new_k = $k->copy();
+
+  dovmstats($old_k, $new_k);
+
+  #sleep(1);
+  clock_nanosleep( CLOCK_HIGHRES, 500_000_000 );
+}
+
+sub dovmstats {
+  my ($old_k, $new_k) = @_;
+  my ($old_sys_agg, $new_sys_agg, $etime, $percent_factor, $sys_updates, $vm_updates);
+
+  if ($old_k) {
+    $old_sys_agg = extract_sys_agg($old_k);
+  }
+  $new_sys_agg = extract_sys_agg($new_k);
+
+  $etime = cpu_ticks_delta($old_sys_agg, $new_sys_agg);
+  say "ETIME: $etime";
+  $percent_factor = 100.0 / denom($etime);
+  say "PERCENT FACTOR: $percent_factor";
+
+  $etime = ($etime >= 1.0)                        ?
+           (($etime / nr_active_cpus($new_k)) / $hz) : 1.0;
+  say "UPDATED ETIME: $etime";
+}
+
+
+
+sub extract_sys_agg {
+  my ($k) = @_;
+  my ($sys_agg) = {};
+
+  # Create aggregated sys info
+  foreach my $instance ( keys %{$k->{cpu}} ) {
+    foreach my $key ( keys %{$k->{cpu}->{$instance}->{sys}} ) {
+      # Skip non-numeric values
+      next if ($k->{cpu}->{$instance}->{sys}->{$key} =~ m/\D/);
+      $sys_agg->{$key} += $k->{cpu}->{$instance}->{sys}->{$key};
+    }
+  }
+  return $sys_agg;
+}
+
+
+sub cpu_ticks_delta {
+  my ($old_kstat, $new_kstat) = @_;
+  my ($ticks) = 0;
+
+  foreach my $state (@cpu_states) {
+    $ticks += kstat_delta($old_kstat, $new_kstat, $state);
+  }
+  return $ticks;
+}
+
+sub kstat_delta {
+  my ($old, $new, $name) = @_;
+
+  if ($old && (exists($old->{$name}))) {
+    return $new->{$name} - $old->{$name};
+  }
+  return $new->{$name};
+}
+
+sub nr_active_cpus {
+  my ($snapshot) = @_;
+  my ($count)    = 0;
+  # Iterate over cpu_info:instance:state, looking for those that are active
+  # and returning the count
+  foreach my $cpu ( keys %{$snapshot->{cpu_info}} ) {
+    my $name = "cpu_info" . $cpu;
+
+    if ($snapshot->{cpu_info}->{$cpu}->{$name}->{'state'} =~
+         /^(?:on\-line|no\-intr)/)
+    {
+      $count++;
+    }
+  }
+  say "CPUS ACTIVE: $count";
+  return $count;
+}
+
+#
+# SIDE EFFECT: uses global $pagesize
+#
+sub pgtok
+{
+  my ($a) = shift;
+  return $a * ($pagesize >> 10);
+}
+
+sub denom
+{
+  my ($x) = shift;
+  return defined($x) ? $x : 1;
+}

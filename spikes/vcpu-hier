@@ -8,11 +8,37 @@ use JSON::MaybeXS;
 use Data::Dumper;
 use Solaris::kstat;
 use Time::HiRes  qw( clock_nanosleep CLOCK_HIGHRES );
+use IO::Async::Loop;
+use Net::AMQP::RabbitMQ;
 
-my $coder = JSON::MaybeXS->new->pretty->space_after(1)->space_before(1)->indent(1)->ascii;
+my $coder = JSON::MaybeXS->new->pretty->space_after(0)->space_before(0)->indent(0)->ascii;
 
 my $hostname = qx{/bin/uname -n};
 chomp($hostname);
+
+my $loop = IO::Async::Loop->new;
+my $mq    = Net::AMQP::RabbitMQ->new();
+my $queue = "$hostname";
+
+$mq->connect(
+  "nydevsol10.dev.bloomberg.com",
+  # "localhost",
+  {
+    user   => 'guest',
+    pass   => 'guest',
+  },
+);
+
+$mq->channel_open(1);
+
+$mq->exchange_declare(1, "amq.direct",
+  { exchange_type => 'direct',
+    durable       => 1,
+  }
+);
+
+$mq->queue_declare(1, $queue);
+
 
 my $fields = {
   #field => { name => { value => stat } },
@@ -191,8 +217,8 @@ while (1) {
   my $elapsed = $awakened - $start_ns;
   say "ELAPSED: $elapsed nsecs";
   # say Dumper( $data_to_return );
-  say $coder->encode( $data_to_return );
-  exit;
+  # say $coder->encode( $data_to_return );
+  $mq->publish(1, $queue, $coder->encode( $data_to_return ));
 }
 
 sub arrays_identical {

@@ -10,9 +10,10 @@ my $k = Solaris::kstat->new();
 
 isa_ok($k, 'Solaris::kstat', 'hashref type is correct');
 
-ok( exists $k->{unix}->{0}->{dnlcstats}, 'DNLC kstats exist' );
-ok( exists $k->{unix}{0}{dnlcstats},     'DNLC kstats #2 exist' );
+ok( exists $k->{unix}->{0}->{var}, 'var kstats exist' );
 
-diag Dumper( $k->{unix}->{0}->{dnlcstats} );
+# TODO: Test for the known keys in var
+
+#diag Dumper( $k->{unix}->{0}->{var} );
 
 done_testing();

@@ -189,6 +189,7 @@ while (1) {
   my $elapsed = $awakened - $start_ns;
   say "ELAPSED: $elapsed nsecs";
   say Dumper( $data_to_return );
+  exit;
 }
 
 sub arrays_identical {
