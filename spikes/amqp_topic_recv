@@ -15,6 +15,7 @@ my $coder = JSON::MaybeXS->new->ascii;
 my $loop = IO::Async::Loop->new;
 my $mq    = Net::AMQP::RabbitMQ->new();
 #my $routing_key = 'nydevsol10.vmstat';
+my $exchange_name = "topic_stat";
 my $routing_key = '#';
 
 $mq->connect(
@@ -28,7 +29,7 @@ $mq->connect(
 
 $mq->channel_open(1);
 
-$mq->exchange_declare(1, "topic_stat",
+$mq->exchange_declare(1, $exchange_name,
   { exchange_type => 'topic', }
 );
 
@@ -39,7 +40,7 @@ my $queue_name = $mq->queue_declare(1, '',
 
 say "QUEUE NAME: $queue_name";
 
-$mq->queue_bind(1, $queue_name, "topic_stat", "#" );
+$mq->queue_bind(1, $queue_name, $exchange_name, $routing_key );
 
 
 my $tag = $mq->consume(1, $queue_name );
