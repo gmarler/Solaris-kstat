@@ -13,7 +13,12 @@ use DateTime             qw();
 use Solaris::Sysconf     qw(_SC_PAGESIZE _SC_CLK_TCK);
 use Net::AMQP::RabbitMQ;
 use IO::Async::Loop      qw();
+use Getopt::Long;
 
+my $amqp_server = "localhost";
+
+GetOptions( "amqp=s" => \$amqp_server )
+  or die("ERROR in command line args");
 
 my $coder = JSON::MaybeXS->new->ascii;
 
@@ -22,11 +27,10 @@ chomp($hostname);
 
 my $loop = IO::Async::Loop->new;
 my $mq    = Net::AMQP::RabbitMQ->new();
-my $routing_key = "nydevsol10.vmstat";
+my $routing_key = "${hostname}.vmstat";
 
 $mq->connect(
-  "nydevsol10.dev.bloomberg.com",
-  # "localhost",
+  $amqp_server,
   {
     user   => 'guest',
     pass   => 'guest',
