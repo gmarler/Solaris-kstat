@@ -4,13 +4,13 @@
       "Gordon Marler <gmarler@gmarler.com>"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Dist::Zilla version 5.037, CPAN::Meta::Converter version 2.150005",
+   "generated_by" : "Dist::Zilla version 5.032, CPAN::Meta::Converter version 2.142690",
    "license" : [
       "perl_5"
    ],
    "meta-spec" : {
       "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
-      "version" : "2"
+      "version" : 2
    },
    "name" : "Solaris-kstat",
    "no_index" : {
@@ -52,32 +52,27 @@
       },
       "test" : {
          "recommends" : {
-            "CPAN::Meta" : "0",
-            "CPAN::Meta::Requirements" : "0"
+            "CPAN::Meta" : "2.120900"
          },
          "requires" : {
             "Clone" : "0",
             "Data::Dumper" : "0",
-            "Devel::Peek" : "0",
             "ExtUtils::MakeMaker" : "0",
-            "File::Spec::Functions" : "0",
-            "List::Util" : "0",
+            "File::Spec" : "0",
             "POSIX" : "0",
             "Test::More" : "0",
-            "Test::Most" : "0",
-            "Test::Refcount" : "0",
-            "perl" : "v5.18.1"
+            "Test::Most" : "0"
          }
       }
    },
    "provides" : {
       "Solaris::kstat" : {
          "file" : "lib/Solaris/kstat.pm",
-         "version" : "0.006"
+         "version" : "0.001"
       }
    },
    "release_status" : "stable",
-   "version" : "0.006",
+   "version" : "0.001",
    "x_contributors" : [
       "gmarler <gmarler@gmarler.com>"
    ]
