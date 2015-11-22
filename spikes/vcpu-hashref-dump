@@ -4,44 +4,13 @@ use v5.18.1;
 use strict;
 use warnings;
 
-use JSON::MaybeXS;
 use Data::Dumper;
 use Solaris::kstat;
 use Time::HiRes  qw( clock_nanosleep CLOCK_HIGHRES );
-use IO::Async::Loop;
-use Net::AMQP::RabbitMQ;
-use Clone qw( clone );
-use Storable qw( dclone );
 
-my $coder = JSON::MaybeXS->new->ascii;
 
 my $hostname = qx{/bin/uname -n};
 chomp($hostname);
-
-my $loop = IO::Async::Loop->new;
-my $mq    = Net::AMQP::RabbitMQ->new();
-my $queue = "$hostname";
-
-$mq->connect(
-  # "nydevsol10.dev.bloomberg.com",
-  "localhost",
-  {
-    user   => 'guest',
-    pass   => 'guest',
-  },
-);
-
-$mq->channel_open(1);
-
-$mq->exchange_declare(1, "amq.direct",
-  { exchange_type => 'direct',
-    durable       => 1,
-  }
-);
-
-$mq->queue_declare(1, $queue);
-
-
 
 my $fields = {
   #field => { name => { value => stat } },
@@ -82,6 +51,7 @@ foreach my $instance ( keys %{$k->{cpu}} ) {
   () = each %{$k->{cpu}->{$instance}->{sys}};
 }
 
+
 my $i = 0;
 my @data;
 my $gen  = 0;
@@ -100,36 +70,23 @@ while (1) {
   $data[$gen] = $k->copy();
   my $data_to_return = [];
 
-  if (scalar(keys %{$data[$gen]->{cpu}}) !=
-      scalar(keys %{$data[$gen ^ 1]->{cpu}})) {
-    # If this condition is true, there's been a change in the count of CPUs
-    # (cpus going offline, or offline/online - in this case, we need to reprime
-    # the $k data structure
-    foreach my $instance ( keys %{$k->{cpu}} ) {
-      () = each %{$k->{cpu}->{$instance}->{sys}};
-    }
-  }
   foreach my $cpu (sort { $a <=> $b } keys %{$data[$gen]->{cpu}}) {
-    # In the case where the # of CPUs has increased/decreased due to
-    # dynamic CPU stat manipulation by an SA or script, we should only do
-    # a comparison if the CPU actually exists in *both* copies of the
-    # kstats.
-    next unless (exists($data[$gen]->{cpu}->{$cpu}) and
-                 exists($data[$gen ^ 1]->{cpu}->{$cpu}));
     $data_to_return->[$cpu] = {};
     $data_to_return->[$cpu]->{CPU} = $cpu;
     if (defined($data[$gen ^ 1])) {
-      foreach my $field ( qw(idl usr sys) ) {
+      foreach my $field ( qw(idl) ) {
         my ($name) = keys %{$fields->{$field}};
         my ($stat) = $fields->{$field}->{$name}->{value};
-        # Skip if snaptimes are identical - this may happen on the first
+        # Skip if snaptimes are identical - this will always happen on the first
         # pass through this loop
         next if ($data[$gen]->{cpu}->{$cpu}->{$name}->{snaptime} ==
                  $data[$gen ^ 1]->{cpu}->{$cpu}->{$name}->{snaptime});
+
         #say "kstat name: $name";
+        #say "kstat stat: $stat";
         #say "kstat stat info: " . Dumper( $stat );
-        #say "OLD: " . $data[$gen]->{$cpu}->{$name}->{snaptime};
-        #say "NEW: " . $data[$gen ^ 1]->{$cpu}->{$name}->{snaptime};
+        #say "OLD " . $data[$gen ^ 1]->{cpu}->{$cpu}->{$name}->{snaptime};
+        #say "NEW " . $data[$gen]->{cpu}->{$cpu}->{$name}->{snaptime};
         my $time_pct =
           (($data[$gen]->{cpu}->{$cpu}->{$name}->{$stat} -
             $data[$gen ^ 1]->{cpu}->{$cpu}->{$name}->{$stat}
@@ -155,6 +112,6 @@ while (1) {
   my $awakened = $k->gethrtime;
   my $elapsed = $awakened - $start_ns;
   say "ELAPSED: $elapsed nsecs";
-  $mq->publish(1, $queue, $coder->encode( $data_to_return ));
+  say Dumper( $data_to_return );
 }
 

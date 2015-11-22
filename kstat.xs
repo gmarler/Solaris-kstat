@@ -10,6 +10,12 @@
 
 /* kstat related includes */
 #include <kstat.h>
+#include <libgen.h>
+#include <sys/var.h>
+#include <sys/utsname.h>
+#include <sys/sysinfo.h>
+#include <sys/flock.h>
+
 /* for gethrtime() */
 #include <sys/time.h>
 
@@ -88,6 +94,253 @@ typedef void (*kstat_raw_reader_t)(HV *, kstat_t *, int);
 static HV *raw_kstat_lookup;
 
 /* C functions */
+
+/*
+ * Kstats come in two flavours, named and raw.  Raw kstats are just C structs,
+ * so we need a function per raw kstat to convert the C struct into the
+ * corresponding perl hash.  All such conversion functions are in the following
+ * section.
+ */
+
+/*
+ * Definitions in /usr/include/sys/cpuvar.h and /usr/include/sys/sysinfo.h
+ */
+
+  static void
+save_cpu_stat(HV *self, kstat_t *kp, int strip_str)
+{
+  cpu_stat_t    *statp;
+  cpu_sysinfo_t *sysinfop;
+  cpu_syswait_t *syswaitp;
+  cpu_vminfo_t  *vminfop;
+
+  /* PERL_ASSERT(kp->ks_ndata == 1); */
+  PERL_ASSERT(kp->ks_data_size == sizeof (cpu_stat_t));
+  statp = (cpu_stat_t *)(kp->ks_data);
+  sysinfop = &statp->cpu_sysinfo;
+  syswaitp = &statp->cpu_syswait;
+  vminfop  = &statp->cpu_vminfo;
+
+  hv_store(self, "idle", 4, NEW_UV(sysinfop->cpu[CPU_IDLE]), 0);
+  hv_store(self, "user", 4, NEW_UV(sysinfop->cpu[CPU_USER]), 0);
+  hv_store(self, "kernel", 6, NEW_UV(sysinfop->cpu[CPU_KERNEL]), 0);
+  hv_store(self, "wait", 4, NEW_UV(sysinfop->cpu[CPU_WAIT]), 0);
+  hv_store(self, "wait_io", 7, NEW_UV(sysinfop->wait[W_IO]), 0);
+  hv_store(self, "wait_swap", 9, NEW_UV(sysinfop->wait[W_SWAP]), 0);
+  hv_store(self, "wait_pio",  8, NEW_UV(sysinfop->wait[W_PIO]), 0);
+  SAVE_UINT32(self, sysinfop, bread);
+  SAVE_UINT32(self, sysinfop, bwrite);
+  SAVE_UINT32(self, sysinfop, lread);
+  SAVE_UINT32(self, sysinfop, lwrite);
+  SAVE_UINT32(self, sysinfop, phread);
+  SAVE_UINT32(self, sysinfop, phwrite);
+  SAVE_UINT32(self, sysinfop, pswitch);
+  SAVE_UINT32(self, sysinfop, trap);
+  SAVE_UINT32(self, sysinfop, intr);
+  SAVE_UINT32(self, sysinfop, syscall);
+  SAVE_UINT32(self, sysinfop, sysread);
+  SAVE_UINT32(self, sysinfop, syswrite);
+  SAVE_UINT32(self, sysinfop, sysfork);
+  SAVE_UINT32(self, sysinfop, sysvfork);
+  SAVE_UINT32(self, sysinfop, sysexec);
+  SAVE_UINT32(self, sysinfop, readch);
+  SAVE_UINT32(self, sysinfop, writech);
+  SAVE_UINT32(self, sysinfop, rcvint);
+  SAVE_UINT32(self, sysinfop, xmtint);
+  SAVE_UINT32(self, sysinfop, mdmint);
+  SAVE_UINT32(self, sysinfop, rawch);
+  SAVE_UINT32(self, sysinfop, canch);
+  SAVE_UINT32(self, sysinfop, outch);
+  SAVE_UINT32(self, sysinfop, msg);
+  SAVE_UINT32(self, sysinfop, sema);
+  SAVE_UINT32(self, sysinfop, namei);
+  SAVE_UINT32(self, sysinfop, ufsiget);
+  SAVE_UINT32(self, sysinfop, ufsdirblk);
+  SAVE_UINT32(self, sysinfop, ufsipage);
+  SAVE_UINT32(self, sysinfop, ufsinopage);
+  SAVE_UINT32(self, sysinfop, inodeovf);
+  SAVE_UINT32(self, sysinfop, fileovf);
+  SAVE_UINT32(self, sysinfop, procovf);
+  SAVE_UINT32(self, sysinfop, intrthread);
+  SAVE_UINT32(self, sysinfop, intrblk);
+  SAVE_UINT32(self, sysinfop, idlethread);
+  SAVE_UINT32(self, sysinfop, inv_swtch);
+  SAVE_UINT32(self, sysinfop, nthreads);
+  SAVE_UINT32(self, sysinfop, cpumigrate);
+  SAVE_UINT32(self, sysinfop, xcalls);
+  SAVE_UINT32(self, sysinfop, mutex_adenters);
+  SAVE_UINT32(self, sysinfop, rw_rdfails);
+  SAVE_UINT32(self, sysinfop, rw_wrfails);
+  SAVE_UINT32(self, sysinfop, modload);
+  SAVE_UINT32(self, sysinfop, modunload);
+  SAVE_UINT32(self, sysinfop, bawrite);
+#ifdef STATISTICS	/* see header file */
+  SAVE_UINT32(self, sysinfop, rw_enters);
+  SAVE_UINT32(self, sysinfop, win_uo_cnt);
+  SAVE_UINT32(self, sysinfop, win_uu_cnt);
+  SAVE_UINT32(self, sysinfop, win_so_cnt);
+  SAVE_UINT32(self, sysinfop, win_su_cnt);
+  SAVE_UINT32(self, sysinfop, win_suo_cnt);
+#endif
+
+  SAVE_INT32(self, syswaitp, iowait);
+  SAVE_INT32(self, syswaitp, swap);
+  SAVE_INT32(self, syswaitp, physio);
+
+  SAVE_UINT32(self, vminfop, pgrec);
+  SAVE_UINT32(self, vminfop, pgfrec);
+  SAVE_UINT32(self, vminfop, pgin);
+  SAVE_UINT32(self, vminfop, pgpgin);
+  SAVE_UINT32(self, vminfop, pgout);
+  SAVE_UINT32(self, vminfop, pgpgout);
+  SAVE_UINT32(self, vminfop, swapin);
+  SAVE_UINT32(self, vminfop, pgswapin);
+  SAVE_UINT32(self, vminfop, swapout);
+  SAVE_UINT32(self, vminfop, pgswapout);
+  SAVE_UINT32(self, vminfop, zfod);
+  SAVE_UINT32(self, vminfop, dfree);
+  SAVE_UINT32(self, vminfop, scan);
+  SAVE_UINT32(self, vminfop, rev);
+  SAVE_UINT32(self, vminfop, hat_fault);
+  SAVE_UINT32(self, vminfop, as_fault);
+  SAVE_UINT32(self, vminfop, maj_fault);
+  SAVE_UINT32(self, vminfop, cow_fault);
+  SAVE_UINT32(self, vminfop, prot_fault);
+  SAVE_UINT32(self, vminfop, softlock);
+  SAVE_UINT32(self, vminfop, kernel_asflt);
+  SAVE_UINT32(self, vminfop, pgrrun);
+  SAVE_UINT32(self, vminfop, execpgin);
+  SAVE_UINT32(self, vminfop, execpgout);
+  SAVE_UINT32(self, vminfop, execfree);
+  SAVE_UINT32(self, vminfop, anonpgin);
+  SAVE_UINT32(self, vminfop, anonpgout);
+  SAVE_UINT32(self, vminfop, anonfree);
+  SAVE_UINT32(self, vminfop, fspgin);
+  SAVE_UINT32(self, vminfop, fspgout);
+  SAVE_UINT32(self, vminfop, fsfree);
+}
+
+/*
+ * Definitions in /usr/include/sys/var.h
+ */
+
+static void
+save_var(HV *self, kstat_t *kp, int strip_str)
+{
+  struct var *varp;
+
+  /* PERL_ASSERT(kp->ks_ndata == 1); */
+  PERL_ASSERT(kp->ks_data_size == sizeof (struct var));
+  varp = (struct var *)(kp->ks_data);
+
+  SAVE_INT32(self, varp, v_buf);
+  SAVE_INT32(self, varp, v_call);
+  SAVE_INT32(self, varp, v_proc);
+  SAVE_INT32(self, varp, v_maxupttl);
+  SAVE_INT32(self, varp, v_nglobpris);
+  SAVE_INT32(self, varp, v_maxsyspri);
+  SAVE_INT32(self, varp, v_clist);
+  SAVE_INT32(self, varp, v_maxup);
+  SAVE_INT32(self, varp, v_hbuf);
+  SAVE_INT32(self, varp, v_hmask);
+  SAVE_INT32(self, varp, v_pbuf);
+  SAVE_INT32(self, varp, v_sptmap);
+  SAVE_INT32(self, varp, v_maxpmem);
+  SAVE_INT32(self, varp, v_autoup);
+  SAVE_INT32(self, varp, v_bufhwm);
+}
+
+/*
+ * Definition in  /usr/include/sys/sysinfo.h
+ */
+
+static void
+save_sysinfo(HV *self, kstat_t *kp, int strip_str)
+{
+  sysinfo_t *sysinfop;
+
+  /* PERL_ASSERT(kp->ks_ndata == 1); */
+  PERL_ASSERT(kp->ks_data_size == sizeof (sysinfo_t));
+  sysinfop = (sysinfo_t *)(kp->ks_data);
+
+  SAVE_UINT32(self, sysinfop, updates);
+  SAVE_UINT32(self, sysinfop, runque);
+  SAVE_UINT32(self, sysinfop, runocc);
+  SAVE_UINT32(self, sysinfop, swpque);
+  SAVE_UINT32(self, sysinfop, swpocc);
+  SAVE_UINT32(self, sysinfop, waiting);
+}
+
+/*
+ * Definition in  /usr/include/sys/sysinfo.h
+ */
+
+static void
+save_vminfo(HV *self, kstat_t *kp, int strip_str)
+{
+  vminfo_t *vminfop;
+
+  /* PERL_ASSERT(kp->ks_ndata == 1); */
+  PERL_ASSERT(kp->ks_data_size == sizeof (vminfo_t));
+  vminfop = (vminfo_t *)(kp->ks_data);
+
+  SAVE_UINT64(self, vminfop, freemem);
+  SAVE_UINT64(self, vminfop, swap_resv);
+  SAVE_UINT64(self, vminfop, swap_alloc);
+  SAVE_UINT64(self, vminfop, swap_avail);
+  SAVE_UINT64(self, vminfop, swap_free);
+  SAVE_UINT64(self, vminfop, updates);
+}
+
+
+/*
+ * We need to be able to find the function corresponding to a particular raw
+ * kstat.  To do this we ignore the instance and glue the module and name
+ * together to form a composite key.  We can then use the data in the kstat
+ * structure to find the appropriate function.  We use a perl hash to manage the
+ * lookup, where the key is "module:name" and the value is a pointer to the
+ * appropriate C function.
+ *
+ * Note that some kstats include the instance number as part of the module
+ * and/or name.  This could be construed as a bug.  However, to work around this
+ * we omit any digits from the module and name as we build the table in
+ * build_raw_kstat_loopup(), and we remove any digits from the module and name
+ * when we look up the functions in lookup_raw_kstat_fn()
+ */
+
+/*
+ * This function is called when the XS is first dlopen()ed, and builds the
+ * lookup table as described above.
+ */
+
+static void
+build_raw_kstat_lookup()
+{
+  /* Create new hash */
+  raw_kstat_lookup = newHV();
+
+  SAVE_FNP(raw_kstat_lookup, save_cpu_stat, "cpu_stat:cpu_stat");
+  SAVE_FNP(raw_kstat_lookup, save_var, "unix:var");
+  SAVE_FNP(raw_kstat_lookup, save_sysinfo, "unix:sysinfo");
+  SAVE_FNP(raw_kstat_lookup, save_vminfo, "unix:vminfo");
+/*
+  SAVE_FNP(raw_kstat_lookup, save_nfs, "nfs:mntinfo");
+ */
+#ifdef __sparc
+/*
+  SAVE_FNP(raw_kstat_lookup, save_sfmmu_global_stat,
+      "unix:sfmmu_global_stat");
+  SAVE_FNP(raw_kstat_lookup, save_sfmmu_tsbsize_stat,
+      "unix:sfmmu_tsbsize_stat");
+  SAVE_FNP(raw_kstat_lookup, save_simmstat, "unix:simm-status");
+  SAVE_FNP(raw_kstat_lookup, save_temperature, "unix:temperature");
+  SAVE_FNP(raw_kstat_lookup, save_temp_over, "unix:temperature override");
+  SAVE_FNP(raw_kstat_lookup, save_ps_shadow, "unix:ps_shadow");
+  SAVE_FNP(raw_kstat_lookup, save_fault_list, "unix:fault_list");
+*/
+#endif
+}
+
 
 /*
  * This finds and returns the raw kstat reader function corresponding to the
@@ -523,8 +776,8 @@ MODULE = Solaris::kstat       PACKAGE = Solaris::kstat
 PROTOTYPES: ENABLE
 
 # Create the raw kstat to store function lookup table on load
-#BOOT:
-#  build_raw_kstat_lookup();
+BOOT:
+  build_raw_kstat_lookup();
 
 #
 # The Solaris::kstat constructor.  This builds the nested

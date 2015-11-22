@@ -10,9 +10,6 @@ my $k = Solaris::kstat->new();
 
 isa_ok($k, 'Solaris::kstat', 'hashref type is correct');
 
-ok( exists $k->{unix}->{0}->{dnlcstats}, 'DNLC kstats exist' );
-ok( exists $k->{unix}{0}{dnlcstats},     'DNLC kstats #2 exist' );
-
-diag Dumper( $k->{unix}->{0}->{dnlcstats} );
+ok( exists $k->{cpu_stat}, 'cpu_stat kstats exist' );
 
 done_testing();
