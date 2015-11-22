@@ -74,6 +74,7 @@
    "release_status" : "stable",
    "version" : "0.001",
    "x_contributors" : [
+      "Gordon Marler <gmarler@bloomberg.net>",
       "gmarler <gmarler@gmarler.com>"
    ]
 }
