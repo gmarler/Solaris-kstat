@@ -1,0 +1,114 @@
+#!/usr/bin/env perl
+
+use v5.18.1;
+use strict;
+use warnings;
+
+use JSON::MaybeXS;
+use Data::Dumper;
+use Solaris::kstat;
+use Time::HiRes          qw( clock_nanosleep CLOCK_HIGHRES );
+use DateTime::TimeZone   qw();
+use DateTime             qw();
+use Net::AMQP::RabbitMQ;
+use IO::Async::Loop      qw();
+
+
+my $coder = JSON::MaybeXS->new->ascii;
+
+my $hostname = qx{/bin/uname -n};
+chomp($hostname);
+
+# my $loop = IO::Async::Loop->new;
+# my $mq    = Net::AMQP::RabbitMQ->new();
+# my $routing_key = "${hostname}.arcstats";
+# 
+# $mq->connect(
+#   "nydevsol10.dev.bloomberg.com",
+#   # "localhost",
+#   {
+#     user   => 'guest',
+#     pass   => 'guest',
+#   },
+# );
+# 
+# $mq->channel_open(1);
+# 
+# $mq->exchange_declare(1, "topic_stat",
+#   { exchange_type => 'topic', }
+# );
+
+
+my $tz = DateTime::TimeZone->new( name => 'local' );
+
+say "TZ: " . $tz->name;
+
+my $k = Solaris::kstat->new();
+
+# Prime the kstat by reading the data we intend to use in this script.  In this
+# case, that's zfs:0:arcstats
+() = each %{$k->{zfs}->{0}->{arcstats}};
+
+my $copy = $k->copy();
+
+say Dumper( $copy->{zfs}{0}{arcstats} );
+
+exit;
+
+my ($old_k, $new_k) = (undef, undef);
+
+my ($start_n)  = $k->gethrtime();
+my ($period_n) = 1 * 1_000_000_000;  # 1 sec in nanosecs
+
+while (1) {
+  $start_n = sleep_until($start_n, $period_n, 1, undef);
+
+  $old_k = $new_k;
+  $k->update();
+  $new_k = $k->copy();
+
+  # dovmstats($old_k, $new_k);
+}
+
+# SIDE EFFECT: Uses global $k
+sub sleep_until {
+  my ($wakeup, $interval, $forever, $null) = @_;
+  my ($now, $pause, $pause_left);
+
+  $now   = $k->gethrtime();
+  $pause = $wakeup + $interval - $now;
+
+  if ($pause <= 0 || ($pause < ($interval / 4))) {
+    if ($forever) {
+      $wakeup = $now + $interval;
+      $pause = $interval;
+    } else {
+      $pause = $interval / 2;
+      $wakeup += $interval;
+    }
+  } else {
+    $wakeup += $interval;
+  }
+
+  if ($pause < 1000) {
+    return $wakeup;  # close enough
+  }
+
+  # Do the actual sleep
+  $pause_left = $pause;
+  my $secs_slept;
+  do {
+    #say "GOING TO SLEEP FOR $pause_left ns";
+    $secs_slept = clock_nanosleep( CLOCK_HIGHRES, $pause_left );
+    #say "secs_slept after nanosleep: $secs_slept";
+    if (! defined($secs_slept) ) {
+      say "ERROR in clock_nanosleep";
+      return $wakeup;
+    }
+    $pause_left -= $secs_slept;
+    if ($pause_left < 1000) {
+      return $wakeup; # close enough
+    }
+  } while ($pause_left > 0);
+  return $wakeup;
+}
